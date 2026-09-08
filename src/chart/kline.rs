@@ -2400,10 +2400,13 @@ fn draw_order_book_levels(
     bids.truncate(3);
     asks.truncate(3);
 
+    // Dark Orange colors for big order book levels
+    let bid_color = Color::from_rgb8(240, 140, 20);
+    let ask_color = Color::from_rgb8(220, 90, 10);
+
     for (price, qty, notional) in bids {
         let y = price_to_y(price);
         let left_x = right_edge_x - 180.0;
-        let color = palette.success.base.color;
 
         let line = Path::line(Point::new(left_x, y), Point::new(right_edge_x, y));
         frame.stroke(
@@ -2413,15 +2416,20 @@ fn draw_order_book_levels(
                     segments: &[3.0, 3.0],
                     offset: 0,
                 },
-                ..Stroke::default().with_color(color.scale_alpha(0.85)).with_width(1.5)
+                ..Stroke::default().with_color(bid_color.scale_alpha(0.9)).with_width(1.5)
             },
         );
 
-        let notional_k = notional / 1000.0;
+        let notional_label = if notional >= 1_000_000.0 {
+            format!("BID ${:.1}M ({:.2})", notional / 1_000_000.0, qty.to_f64())
+        } else {
+            format!("BID ${:.0}K ({:.2})", notional / 1000.0, qty.to_f64())
+        };
+
         frame.fill_text(canvas::Text {
-            content: format!("BID ${notional_k:.0}K ({:.2})", qty.to_f64()),
+            content: notional_label,
             position: Point::new(left_x, y - 12.0),
-            color,
+            color: bid_color,
             size: iced::Pixels(10.0),
             ..canvas::Text::default()
         });
@@ -2430,7 +2438,6 @@ fn draw_order_book_levels(
     for (price, qty, notional) in asks {
         let y = price_to_y(price);
         let left_x = right_edge_x - 180.0;
-        let color = palette.danger.base.color;
 
         let line = Path::line(Point::new(left_x, y), Point::new(right_edge_x, y));
         frame.stroke(
@@ -2440,15 +2447,20 @@ fn draw_order_book_levels(
                     segments: &[3.0, 3.0],
                     offset: 0,
                 },
-                ..Stroke::default().with_color(color.scale_alpha(0.85)).with_width(1.5)
+                ..Stroke::default().with_color(ask_color.scale_alpha(0.9)).with_width(1.5)
             },
         );
 
-        let notional_k = notional / 1000.0;
+        let notional_label = if notional >= 1_000_000.0 {
+            format!("ASK ${:.1}M ({:.2})", notional / 1_000_000.0, qty.to_f64())
+        } else {
+            format!("ASK ${:.0}K ({:.2})", notional / 1000.0, qty.to_f64())
+        };
+
         frame.fill_text(canvas::Text {
-            content: format!("ASK ${notional_k:.0}K ({:.2})", qty.to_f64()),
+            content: notional_label,
             position: Point::new(left_x, y - 12.0),
-            color,
+            color: ask_color,
             size: iced::Pixels(10.0),
             ..canvas::Text::default()
         });
