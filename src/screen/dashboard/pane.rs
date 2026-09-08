@@ -1420,6 +1420,7 @@ impl State {
                                                         c.kind,
                                                         data::chart::KlineChartKind::Footprint { .. }
                                                     ) || c.visual_config().show_trade_bubbles
+                                                      || c.visual_config().show_big_order_levels
                                                     {
                                                         streams.push(StreamKind::Trades {
                                                             ticker_info: base_ticker,
