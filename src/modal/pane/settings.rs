@@ -691,7 +691,7 @@ pub fn kline_cfg_view<'a>(
 
                 let big_order_filter_slider = labeled_slider(
                     "Order",
-                    0.0..=10_000_000.0,
+                    0.0..=100_000_000.0,
                     cfg.big_order_level_threshold,
                     move |value| {
                         Message::VisualConfigChanged(
@@ -703,8 +703,15 @@ pub fn kline_cfg_view<'a>(
                             false,
                         )
                     },
-                    |value| format!(">${}", format_with_commas(*value as f64)),
-                    Some(100000.0),
+                    |value| {
+                        let v = *value as f64;
+                        if v >= 1_000_000.0 {
+                            format!(">${:.1}M", v / 1_000_000.0)
+                        } else {
+                            format!(">${}", format_with_commas(v))
+                        }
+                    },
+                    Some(500000.0),
                 );
 
                 column![

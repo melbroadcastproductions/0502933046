@@ -2375,7 +2375,7 @@ fn draw_order_book_levels(
 ) {
     let size_in_quote_ccy = volume_size_unit() == SizeUnit::Quote;
 
-    let filter_levels = |levels: &rustc_hash::FxHashMap<Price, Qty>| {
+    let filter_levels = |levels: &std::collections::BTreeMap<Price, Qty>| {
         levels
             .iter()
             .filter_map(|(p, q)| {
@@ -2400,9 +2400,9 @@ fn draw_order_book_levels(
     bids.truncate(3);
     asks.truncate(3);
 
-    // Dark Orange colors for big order book levels
-    let bid_color = Color::from_rgb8(240, 140, 20);
-    let ask_color = Color::from_rgb8(220, 90, 10);
+    // Dark Orange colors for big order book levels, half transparent (alpha 0.5)
+    let bid_color = Color::from_rgb8(240, 140, 20).scale_alpha(0.5);
+    let ask_color = Color::from_rgb8(220, 90, 10).scale_alpha(0.5);
 
     for (price, qty, notional) in bids {
         let y = price_to_y(price);
@@ -2413,10 +2413,10 @@ fn draw_order_book_levels(
             &line,
             Stroke {
                 line_dash: LineDash {
-                    segments: &[3.0, 3.0],
+                    segments: &[4.0, 3.0],
                     offset: 0,
                 },
-                ..Stroke::default().with_color(bid_color.scale_alpha(0.9)).with_width(1.5)
+                ..Stroke::default().with_color(bid_color).with_width(1.5)
             },
         );
 
@@ -2444,10 +2444,10 @@ fn draw_order_book_levels(
             &line,
             Stroke {
                 line_dash: LineDash {
-                    segments: &[3.0, 3.0],
+                    segments: &[4.0, 3.0],
                     offset: 0,
                 },
-                ..Stroke::default().with_color(ask_color.scale_alpha(0.9)).with_width(1.5)
+                ..Stroke::default().with_color(ask_color).with_width(1.5)
             },
         );
 
