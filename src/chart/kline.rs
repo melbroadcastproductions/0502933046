@@ -1285,6 +1285,8 @@ impl canvas::Program<Message> for KlineChart {
                     latest,
                 );
 
+                let visible_right_x = region.x + region.width;
+
                 draw_big_order_markers(
                     frame,
                     &self.big_trades,
@@ -1295,11 +1297,13 @@ impl canvas::Program<Message> for KlineChart {
                     chart.basis,
                     earliest,
                     latest,
-                    frame.width(),
+                    visible_right_x,
+                    chart.scaling,
                 );
 
                 if self.visual_config.show_big_order_levels {
                     if let Some(depth) = &self.latest_depth {
+                        let (visible_lowest_price, visible_highest_price) = chart.price_range(&region);
                         draw_order_book_levels(
                             frame,
                             depth,
@@ -1307,7 +1311,10 @@ impl canvas::Program<Message> for KlineChart {
                             chart.ticker_info.market_type(),
                             self.visual_config.big_order_level_threshold,
                             palette,
-                            frame.width(),
+                            visible_right_x,
+                            chart.scaling,
+                            visible_lowest_price,
+                            visible_highest_price,
                         );
                     }
                 }
@@ -2283,6 +2290,7 @@ fn draw_big_order_markers(
     earliest: u64,
     latest: u64,
     right_edge_x: f32,
+    scaling: f32,
 ) {
     let size_in_quote_ccy = volume_size_unit() == SizeUnit::Quote;
 
@@ -2334,12 +2342,12 @@ fn draw_big_order_markers(
             &dashed,
             Stroke {
                 line_dash: LineDash {
-                    segments: &[4.0, 3.0],
+                    segments: &[4.0 / scaling, 3.0 / scaling],
                     offset: 0,
                 },
                 ..Stroke::default()
                     .with_color(color.scale_alpha(0.7))
-                    .with_width(1.0)
+                    .with_width(1.0 / scaling)
             },
         );
 
@@ -2347,16 +2355,16 @@ fn draw_big_order_markers(
             content: arrow.to_string(),
             position: Point::new(x, y),
             color,
-            size: iced::Pixels(12.0),
+            size: iced::Pixels(12.0 / scaling),
             ..canvas::Text::default()
         });
 
         let notional_k = notional / 1000.0;
         frame.fill_text(canvas::Text {
             content: format!("{label} ${notional_k:.0}K"),
-            position: Point::new(right_edge_x - 90.0, y - 12.0),
+            position: Point::new(right_edge_x - (90.0 / scaling), y - (12.0 / scaling)),
             color,
-            size: iced::Pixels(10.0),
+            size: iced::Pixels(10.0 / scaling),
             ..canvas::Text::default()
         });
     }
@@ -2370,8 +2378,11 @@ fn draw_order_book_levels(
     price_to_y: impl Fn(Price) -> f32,
     market_type: exchange::adapter::MarketKind,
     threshold: f32,
-    palette: &Extended,
+    _palette: &Extended,
     right_edge_x: f32,
+    scaling: f32,
+    visible_lowest_price: Price,
+    visible_highest_price: Price,
 ) {
     let size_in_quote_ccy = volume_size_unit() == SizeUnit::Quote;
 
@@ -2379,6 +2390,9 @@ fn draw_order_book_levels(
         levels
             .iter()
             .filter_map(|(p, q)| {
+                if *p < visible_lowest_price || *p > visible_highest_price {
+                    return None;
+                }
                 let notional = market_type.qty_in_quote_value(*q, *p, size_in_quote_ccy);
                 if notional >= f64::from(threshold) {
                     Some((*p, *q, notional))
@@ -2406,17 +2420,17 @@ fn draw_order_book_levels(
 
     for (price, qty, notional) in bids {
         let y = price_to_y(price);
-        let left_x = right_edge_x - 180.0;
+        let left_x = right_edge_x - (180.0 / scaling);
 
         let line = Path::line(Point::new(left_x, y), Point::new(right_edge_x, y));
         frame.stroke(
             &line,
             Stroke {
                 line_dash: LineDash {
-                    segments: &[4.0, 3.0],
+                    segments: &[4.0 / scaling, 3.0 / scaling],
                     offset: 0,
                 },
-                ..Stroke::default().with_color(bid_color).with_width(1.5)
+                ..Stroke::default().with_color(bid_color).with_width(1.5 / scaling)
             },
         );
 
@@ -2428,26 +2442,26 @@ fn draw_order_book_levels(
 
         frame.fill_text(canvas::Text {
             content: notional_label,
-            position: Point::new(left_x, y - 12.0),
+            position: Point::new(left_x, y - (12.0 / scaling)),
             color: bid_color,
-            size: iced::Pixels(10.0),
+            size: iced::Pixels(10.0 / scaling),
             ..canvas::Text::default()
         });
     }
 
     for (price, qty, notional) in asks {
         let y = price_to_y(price);
-        let left_x = right_edge_x - 180.0;
+        let left_x = right_edge_x - (180.0 / scaling);
 
         let line = Path::line(Point::new(left_x, y), Point::new(right_edge_x, y));
         frame.stroke(
             &line,
             Stroke {
                 line_dash: LineDash {
-                    segments: &[4.0, 3.0],
+                    segments: &[4.0 / scaling, 3.0 / scaling],
                     offset: 0,
                 },
-                ..Stroke::default().with_color(ask_color).with_width(1.5)
+                ..Stroke::default().with_color(ask_color).with_width(1.5 / scaling)
             },
         );
 
@@ -2459,9 +2473,9 @@ fn draw_order_book_levels(
 
         frame.fill_text(canvas::Text {
             content: notional_label,
-            position: Point::new(left_x, y - 12.0),
+            position: Point::new(left_x, y - (12.0 / scaling)),
             color: ask_color,
-            size: iced::Pixels(10.0),
+            size: iced::Pixels(10.0 / scaling),
             ..canvas::Text::default()
         });
     }

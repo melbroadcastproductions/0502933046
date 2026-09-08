@@ -459,7 +459,7 @@ impl Default for Config {
             trade_bubble_size_filter: 5000.0,
             trade_bubble_size_scale: Some(100),
             show_big_order_levels: true,
-            big_order_level_threshold: 4_000_000.0,
+            big_order_level_threshold: 10_000_000.0,
         }
     }
 }
