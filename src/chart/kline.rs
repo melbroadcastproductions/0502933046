@@ -1303,7 +1303,7 @@ impl canvas::Program<Message> for KlineChart {
 
                 if self.visual_config.show_big_order_levels {
                     if let Some(depth) = &self.latest_depth {
-                        let (visible_lowest_price, visible_highest_price) = chart.price_range(&region);
+                        let (visible_highest_price, visible_lowest_price) = chart.price_range(&region);
                         draw_order_book_levels(
                             frame,
                             depth,
@@ -2371,14 +2371,15 @@ fn draw_big_order_markers(
 }
 
 /// Marks the key major resting bid and ask levels from the order book snapshot
-/// exceeding the user-configured size threshold.
+/// exceeding the user-configured size threshold as horizontal bars extending
+/// from the right wall leftward.
 fn draw_order_book_levels(
     frame: &mut canvas::Frame,
     depth: &exchange::depth::Depth,
     price_to_y: impl Fn(Price) -> f32,
     market_type: exchange::adapter::MarketKind,
     threshold: f32,
-    _palette: &Extended,
+    palette: &Extended,
     right_edge_x: f32,
     scaling: f32,
     visible_lowest_price: Price,
@@ -2410,27 +2411,43 @@ fn draw_order_book_levels(
     bids.sort_by(|a, b| b.2.total_cmp(&a.2));
     asks.sort_by(|a, b| b.2.total_cmp(&a.2));
 
-    // Limit to top 3 major levels per side to prevent visual clutter
-    bids.truncate(3);
-    asks.truncate(3);
+    // Limit to top 5 major levels per side to keep depth clear
+    bids.truncate(5);
+    asks.truncate(5);
 
-    // Dark Orange colors for big order book levels, half transparent (alpha 0.5)
-    let bid_color = Color::from_rgb8(240, 140, 20).scale_alpha(0.5);
-    let ask_color = Color::from_rgb8(220, 90, 10).scale_alpha(0.5);
+    let max_notional = bids
+        .iter()
+        .chain(asks.iter())
+        .map(|(_, _, n)| *n)
+        .fold(f64::from(threshold), f64::max);
+
+    let max_bar_width = 180.0 / scaling;
+    let bar_height = 8.0 / scaling;
+
+    // Green for Bids (buy walls), Red for Asks (sell walls)
+    let bid_color = palette.success.base.color.scale_alpha(0.45);
+    let ask_color = palette.danger.base.color.scale_alpha(0.45);
 
     for (price, qty, notional) in bids {
         let y = price_to_y(price);
-        let left_x = right_edge_x - (180.0 / scaling);
+        let bar_width = ((notional / max_notional) as f32 * max_bar_width).max(15.0 / scaling);
+        let bar_left_x = right_edge_x - bar_width;
 
-        let line = Path::line(Point::new(left_x, y), Point::new(right_edge_x, y));
+        frame.fill_rectangle(
+            Point::new(bar_left_x, y - (bar_height / 2.0)),
+            Size::new(bar_width, bar_height),
+            bid_color,
+        );
+
+        let line = Path::line(Point::new(bar_left_x - (60.0 / scaling), y), Point::new(bar_left_x, y));
         frame.stroke(
             &line,
             Stroke {
                 line_dash: LineDash {
-                    segments: &[4.0 / scaling, 3.0 / scaling],
+                    segments: &[3.0 / scaling, 3.0 / scaling],
                     offset: 0,
                 },
-                ..Stroke::default().with_color(bid_color).with_width(1.5 / scaling)
+                ..Stroke::default().with_color(bid_color).with_width(1.0 / scaling)
             },
         );
 
@@ -2442,26 +2459,33 @@ fn draw_order_book_levels(
 
         frame.fill_text(canvas::Text {
             content: notional_label,
-            position: Point::new(left_x, y - (12.0 / scaling)),
-            color: bid_color,
-            size: iced::Pixels(10.0 / scaling),
+            position: Point::new(bar_left_x - (110.0 / scaling), y - (10.0 / scaling)),
+            color: palette.success.base.color,
+            size: iced::Pixels(9.0 / scaling),
             ..canvas::Text::default()
         });
     }
 
     for (price, qty, notional) in asks {
         let y = price_to_y(price);
-        let left_x = right_edge_x - (180.0 / scaling);
+        let bar_width = ((notional / max_notional) as f32 * max_bar_width).max(15.0 / scaling);
+        let bar_left_x = right_edge_x - bar_width;
 
-        let line = Path::line(Point::new(left_x, y), Point::new(right_edge_x, y));
+        frame.fill_rectangle(
+            Point::new(bar_left_x, y - (bar_height / 2.0)),
+            Size::new(bar_width, bar_height),
+            ask_color,
+        );
+
+        let line = Path::line(Point::new(bar_left_x - (60.0 / scaling), y), Point::new(bar_left_x, y));
         frame.stroke(
             &line,
             Stroke {
                 line_dash: LineDash {
-                    segments: &[4.0 / scaling, 3.0 / scaling],
+                    segments: &[3.0 / scaling, 3.0 / scaling],
                     offset: 0,
                 },
-                ..Stroke::default().with_color(ask_color).with_width(1.5 / scaling)
+                ..Stroke::default().with_color(ask_color).with_width(1.0 / scaling)
             },
         );
 
@@ -2473,9 +2497,9 @@ fn draw_order_book_levels(
 
         frame.fill_text(canvas::Text {
             content: notional_label,
-            position: Point::new(left_x, y - (12.0 / scaling)),
-            color: ask_color,
-            size: iced::Pixels(10.0 / scaling),
+            position: Point::new(bar_left_x - (110.0 / scaling), y - (10.0 / scaling)),
+            color: palette.danger.base.color,
+            size: iced::Pixels(9.0 / scaling),
             ..canvas::Text::default()
         });
     }
