@@ -663,6 +663,24 @@ pub fn kline_cfg_view<'a>(
                     Some(5000.0),
                 );
 
+                let bubble_scale_val = cfg.trade_bubble_size_scale.unwrap_or(100);
+                let radius_scale_slider = classic_slider_row(
+                    text("Bubble size scaling"),
+                    slider(10..=200, bubble_scale_val, move |value| {
+                        Message::VisualConfigChanged(
+                            pane,
+                            VisualConfig::Kline(data::chart::kline::Config {
+                                trade_bubble_size_scale: Some(value),
+                                ..cfg
+                            }),
+                            false,
+                        )
+                    })
+                    .step(10)
+                    .into(),
+                    Some(text(format!("{}%", bubble_scale_val)).size(crate::style::text_size::EMPHASIS)),
+                );
+
                 let retention_slider = classic_slider_row(
                     text("Keep bubbles for"),
                     slider(1u32..=60u32, cfg.trade_bubble_retention_mins, move |value| {
@@ -684,6 +702,7 @@ pub fn kline_cfg_view<'a>(
                     text("Trade bubbles").size(crate::style::text_size::SECTION),
                     bubbles_checkbox,
                     size_filter_slider,
+                    radius_scale_slider,
                     retention_slider,
                 ]
                 .spacing(8)
