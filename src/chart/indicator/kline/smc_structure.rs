@@ -554,17 +554,17 @@ pub fn draw_fvg_boxes(
         };
 
         let rect = Path::rectangle(Point::new(x1, top), Size::new((x2 - x1).max(1.0), height.max(1.0)));
-        frame.fill(&rect, fvg_color.scale_alpha(0.35));
+        frame.fill(&rect, fvg_color.scale_alpha(0.18));
         frame.stroke(
             &rect,
-            Stroke::default().with_color(fvg_color.scale_alpha(0.85)).with_width(1.0),
+            Stroke::default().with_color(fvg_color.scale_alpha(0.6)).with_width(1.0),
         );
 
         let stars = "\u{2605}".repeat(fvg.rating as usize);
         frame.fill_text(Text {
             content: format!("FVG {stars}"),
             position: Point::new(x1 + 4.0, top + 2.0),
-            color: fvg_color,
+            color: fvg_color.scale_alpha(1.0),
             size: iced::Pixels(10.0),
             ..Text::default()
         });

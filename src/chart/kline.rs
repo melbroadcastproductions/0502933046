@@ -2223,11 +2223,19 @@ fn draw_trade_bubbles(
 
     let size_in_quote_ccy = volume_size_unit() == SizeUnit::Quote;
 
+    let min_retention_time = if config.trade_bubble_retention_mins > 0 {
+        latest.saturating_sub(u64::from(config.trade_bubble_retention_mins) * 60 * 1000)
+    } else {
+        0
+    };
+
+    let effective_earliest = earliest.max(min_retention_time);
+
     let visible: Vec<&Trade> = trades
         .iter()
         .filter(|t| {
             let tt = t.time.as_u64();
-            tt >= earliest && tt <= latest
+            tt >= effective_earliest && tt <= latest
         })
         .collect();
 
@@ -2428,9 +2436,12 @@ fn draw_order_book_levels(
     let bar_height = 14.0 / scaling;
 
     // Green for Bids (buy walls), Red for Asks (sell walls)
-    let bid_bg_color = palette.success.base.color.scale_alpha(0.7);
-    let ask_bg_color = palette.danger.base.color.scale_alpha(0.7);
-    let text_color = palette.background.base.text;
+    let bid_bg_color = palette.success.base.color.scale_alpha(0.75);
+    let ask_bg_color = palette.danger.base.color.scale_alpha(0.75);
+
+    // High contrast dark text for green bid bar readability, white text for dark red ask bar
+    let bid_text_color = Color::BLACK;
+    let ask_text_color = Color::WHITE;
 
     for (price, qty, notional) in bids {
         let y = price_to_y(price);
@@ -2449,11 +2460,11 @@ fn draw_order_book_levels(
             format!("BID ${:.0}K ({:.1})", notional / 1000.0, qty.to_f64())
         };
 
-        // Text directly on top of / inside the bar
+        // Text aligned at the right side inside/on top of the bar
         frame.fill_text(canvas::Text {
             content: notional_label,
             position: Point::new(right_edge_x - (6.0 / scaling), y),
-            color: text_color,
+            color: bid_text_color,
             size: iced::Pixels(10.0 / scaling),
             align_x: Alignment::End.into(),
             align_y: Alignment::Center.into(),
@@ -2479,11 +2490,11 @@ fn draw_order_book_levels(
             format!("ASK ${:.0}K ({:.1})", notional / 1000.0, qty.to_f64())
         };
 
-        // Text directly on top of / inside the bar
+        // Text aligned at the right side inside/on top of the bar
         frame.fill_text(canvas::Text {
             content: notional_label,
             position: Point::new(right_edge_x - (6.0 / scaling), y),
-            color: text_color,
+            color: ask_text_color,
             size: iced::Pixels(10.0 / scaling),
             align_x: Alignment::End.into(),
             align_y: Alignment::Center.into(),

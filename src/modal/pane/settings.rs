@@ -663,10 +663,28 @@ pub fn kline_cfg_view<'a>(
                     Some(5000.0),
                 );
 
+                let retention_slider = classic_slider_row(
+                    text("Keep bubbles for"),
+                    slider(1..=60, cfg.trade_bubble_retention_mins, move |value| {
+                        Message::VisualConfigChanged(
+                            pane,
+                            VisualConfig::Kline(data::chart::kline::Config {
+                                trade_bubble_retention_mins: value,
+                                ..cfg
+                            }),
+                            false,
+                        )
+                    })
+                    .step(1)
+                    .into(),
+                    Some(text(format!("{} min", cfg.trade_bubble_retention_mins)).size(crate::style::text_size::EMPHASIS)),
+                );
+
                 column![
                     text("Trade bubbles").size(crate::style::text_size::SECTION),
                     bubbles_checkbox,
                     size_filter_slider,
+                    retention_slider,
                 ]
                 .spacing(8)
             };

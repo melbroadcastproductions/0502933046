@@ -444,6 +444,8 @@ pub struct Config {
     pub trade_bubble_size_filter: f32,
     // 0-100+ scaling factor applied to bubble radius, None = fixed radius.
     pub trade_bubble_size_scale: Option<i32>,
+    // Retention window in minutes for trade bubbles (0 = unlimited / all visible history).
+    pub trade_bubble_retention_mins: u32,
     // Whether to show big resting order book levels (limit bids/asks) on candlestick charts.
     pub show_big_order_levels: bool,
     // Minimum order size filter for displaying resting order book levels.
@@ -460,6 +462,7 @@ impl Default for Config {
             show_trade_bubbles: true,
             trade_bubble_size_filter: 5000.0,
             trade_bubble_size_scale: Some(100),
+            trade_bubble_retention_mins: 15,
             show_big_order_levels: true,
             big_order_level_threshold: 10_000_000.0,
             big_order_bar_scale: 50.0,
