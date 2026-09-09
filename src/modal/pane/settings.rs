@@ -665,7 +665,7 @@ pub fn kline_cfg_view<'a>(
 
                 let retention_slider = classic_slider_row(
                     text("Keep bubbles for"),
-                    slider(1..=60, cfg.trade_bubble_retention_mins, move |value| {
+                    slider(1u32..=60u32, cfg.trade_bubble_retention_mins, move |value| {
                         Message::VisualConfigChanged(
                             pane,
                             VisualConfig::Kline(data::chart::kline::Config {
@@ -675,7 +675,7 @@ pub fn kline_cfg_view<'a>(
                             false,
                         )
                     })
-                    .step(1)
+                    .step(1u32)
                     .into(),
                     Some(text(format!("{} min", cfg.trade_bubble_retention_mins)).size(crate::style::text_size::EMPHASIS)),
                 );
