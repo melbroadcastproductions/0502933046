@@ -1310,6 +1310,7 @@ impl canvas::Program<Message> for KlineChart {
                             price_to_y,
                             chart.ticker_info.market_type(),
                             self.visual_config.big_order_level_threshold,
+                            self.visual_config.big_order_bar_scale,
                             palette,
                             visible_right_x,
                             chart.scaling,
@@ -2372,13 +2373,14 @@ fn draw_big_order_markers(
 
 /// Marks the key major resting bid and ask levels from the order book snapshot
 /// exceeding the user-configured size threshold as horizontal bars extending
-/// from the right wall leftward.
+/// from the right wall leftward, with text placed directly inside/on top of the bar.
 fn draw_order_book_levels(
     frame: &mut canvas::Frame,
     depth: &exchange::depth::Depth,
     price_to_y: impl Fn(Price) -> f32,
     market_type: exchange::adapter::MarketKind,
     threshold: f32,
+    bar_scale_pct: f32,
     palette: &Extended,
     right_edge_x: f32,
     scaling: f32,
@@ -2421,85 +2423,71 @@ fn draw_order_book_levels(
         .map(|(_, _, n)| *n)
         .fold(f64::from(threshold), f64::max);
 
-    let max_bar_width = 180.0 / scaling;
-    let bar_height = 8.0 / scaling;
+    // Dynamic auto-scaling cap based on bar_scale_pct slider (10% - 100%)
+    let max_bar_width = (220.0 * (bar_scale_pct / 100.0).clamp(0.1, 1.0)) / scaling;
+    let bar_height = 14.0 / scaling;
 
     // Green for Bids (buy walls), Red for Asks (sell walls)
-    let bid_color = palette.success.base.color.scale_alpha(0.45);
-    let ask_color = palette.danger.base.color.scale_alpha(0.45);
+    let bid_bg_color = palette.success.base.color.scale_alpha(0.7);
+    let ask_bg_color = palette.danger.base.color.scale_alpha(0.7);
+    let text_color = palette.background.base.text;
 
     for (price, qty, notional) in bids {
         let y = price_to_y(price);
-        let bar_width = ((notional / max_notional) as f32 * max_bar_width).max(15.0 / scaling);
+        let bar_width = ((notional / max_notional) as f32 * max_bar_width).max(50.0 / scaling);
         let bar_left_x = right_edge_x - bar_width;
 
         frame.fill_rectangle(
             Point::new(bar_left_x, y - (bar_height / 2.0)),
             Size::new(bar_width, bar_height),
-            bid_color,
-        );
-
-        let line = Path::line(Point::new(bar_left_x - (60.0 / scaling), y), Point::new(bar_left_x, y));
-        frame.stroke(
-            &line,
-            Stroke {
-                line_dash: LineDash {
-                    segments: &[3.0 / scaling, 3.0 / scaling],
-                    offset: 0,
-                },
-                ..Stroke::default().with_color(bid_color).with_width(1.0 / scaling)
-            },
+            bid_bg_color,
         );
 
         let notional_label = if notional >= 1_000_000.0 {
-            format!("BID ${:.1}M ({:.2})", notional / 1_000_000.0, qty.to_f64())
+            format!("BID ${:.1}M ({:.1})", notional / 1_000_000.0, qty.to_f64())
         } else {
-            format!("BID ${:.0}K ({:.2})", notional / 1000.0, qty.to_f64())
+            format!("BID ${:.0}K ({:.1})", notional / 1000.0, qty.to_f64())
         };
 
+        // Text directly on top of / inside the bar
         frame.fill_text(canvas::Text {
             content: notional_label,
-            position: Point::new(bar_left_x - (110.0 / scaling), y - (10.0 / scaling)),
-            color: palette.success.base.color,
-            size: iced::Pixels(9.0 / scaling),
+            position: Point::new(right_edge_x - (6.0 / scaling), y),
+            color: text_color,
+            size: iced::Pixels(10.0 / scaling),
+            align_x: Alignment::End.into(),
+            align_y: Alignment::Center.into(),
+            font: style::AZERET_MONO,
             ..canvas::Text::default()
         });
     }
 
     for (price, qty, notional) in asks {
         let y = price_to_y(price);
-        let bar_width = ((notional / max_notional) as f32 * max_bar_width).max(15.0 / scaling);
+        let bar_width = ((notional / max_notional) as f32 * max_bar_width).max(50.0 / scaling);
         let bar_left_x = right_edge_x - bar_width;
 
         frame.fill_rectangle(
             Point::new(bar_left_x, y - (bar_height / 2.0)),
             Size::new(bar_width, bar_height),
-            ask_color,
-        );
-
-        let line = Path::line(Point::new(bar_left_x - (60.0 / scaling), y), Point::new(bar_left_x, y));
-        frame.stroke(
-            &line,
-            Stroke {
-                line_dash: LineDash {
-                    segments: &[3.0 / scaling, 3.0 / scaling],
-                    offset: 0,
-                },
-                ..Stroke::default().with_color(ask_color).with_width(1.0 / scaling)
-            },
+            ask_bg_color,
         );
 
         let notional_label = if notional >= 1_000_000.0 {
-            format!("ASK ${:.1}M ({:.2})", notional / 1_000_000.0, qty.to_f64())
+            format!("ASK ${:.1}M ({:.1})", notional / 1_000_000.0, qty.to_f64())
         } else {
-            format!("ASK ${:.0}K ({:.2})", notional / 1000.0, qty.to_f64())
+            format!("ASK ${:.0}K ({:.1})", notional / 1000.0, qty.to_f64())
         };
 
+        // Text directly on top of / inside the bar
         frame.fill_text(canvas::Text {
             content: notional_label,
-            position: Point::new(bar_left_x - (110.0 / scaling), y - (10.0 / scaling)),
-            color: palette.danger.base.color,
-            size: iced::Pixels(9.0 / scaling),
+            position: Point::new(right_edge_x - (6.0 / scaling), y),
+            color: text_color,
+            size: iced::Pixels(10.0 / scaling),
+            align_x: Alignment::End.into(),
+            align_y: Alignment::Center.into(),
+            font: style::AZERET_MONO,
             ..canvas::Text::default()
         });
     }

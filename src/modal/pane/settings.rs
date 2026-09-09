@@ -710,10 +710,28 @@ pub fn kline_cfg_view<'a>(
                     Some(1_000_000.0),
                 );
 
+                let bar_scale_slider = classic_slider_row(
+                    text("Bar length scaling"),
+                    slider(10.0..=100.0, cfg.big_order_bar_scale, move |value| {
+                        Message::VisualConfigChanged(
+                            pane,
+                            VisualConfig::Kline(data::chart::kline::Config {
+                                big_order_bar_scale: value,
+                                ..cfg
+                            }),
+                            false,
+                        )
+                    })
+                    .step(5.0)
+                    .into(),
+                    Some(text(format!("{:.0}%", cfg.big_order_bar_scale)).size(crate::style::text_size::EMPHASIS)),
+                );
+
                 column![
                     text("Big Order Levels").size(crate::style::text_size::SECTION),
                     big_orders_checkbox,
                     big_order_filter_slider,
+                    bar_scale_slider,
                 ]
                 .spacing(8)
             };

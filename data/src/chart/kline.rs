@@ -448,6 +448,8 @@ pub struct Config {
     pub show_big_order_levels: bool,
     // Minimum order size filter for displaying resting order book levels.
     pub big_order_level_threshold: f32,
+    // Bar length scale multiplier for order book levels (10 to 100 %).
+    pub big_order_bar_scale: f32,
 }
 
 impl Default for Config {
@@ -460,6 +462,7 @@ impl Default for Config {
             trade_bubble_size_scale: Some(100),
             show_big_order_levels: true,
             big_order_level_threshold: 10_000_000.0,
+            big_order_bar_scale: 50.0,
         }
     }
 }
