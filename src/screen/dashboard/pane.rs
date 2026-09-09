@@ -2229,61 +2229,27 @@ impl Content {
         }
     }
 
-    pub fn change_visual_config(&mut self, config: VisualConfig) -> Option<Effect> {
+    pub fn change_visual_config(&mut self, config: VisualConfig) {
         match (self, config) {
             (Content::Kline { chart: Some(c), .. }, VisualConfig::Kline(cfg)) => {
-                let prev_bubbles = c.visual_config().show_trade_bubbles;
-                let prev_levels = c.visual_config().show_big_order_levels;
                 c.set_visual_config(cfg);
-
-                if let Some(base_ticker) = self.stream_pair() {
-                    let needs_trades = cfg.show_trade_bubbles || cfg.show_big_order_levels;
-                    let had_trades = prev_bubbles || prev_levels;
-
-                    if needs_trades != had_trades {
-                        if let Basis::Time(tf) = c.basis() {
-                            let mut streams = vec![StreamKind::Kline {
-                                ticker_info: base_ticker,
-                                timeframe: tf,
-                            }];
-                            if needs_trades {
-                                streams.push(StreamKind::Trades {
-                                    ticker_info: base_ticker,
-                                });
-                                streams.push(StreamKind::Depth {
-                                    ticker_info: base_ticker,
-                                    depth_aggr: StreamTicksize::Client,
-                                    push_freq: exchange::PushFrequency::ServerDefault,
-                                });
-                            }
-                            self.streams = ResolvedStream::Ready(streams);
-                            return Some(Effect::RefreshStreams);
-                        }
-                    }
-                }
-                None
             }
             (Content::Heatmap { chart: Some(c), .. }, VisualConfig::Heatmap(cfg)) => {
                 c.set_visual_config(cfg);
-                None
             }
             (Content::ShaderHeatmap { chart: Some(c), .. }, VisualConfig::Heatmap(cfg)) => {
                 c.set_visual_config(cfg);
-                None
             }
             (Content::Comparison(Some(chart)), VisualConfig::Comparison(cfg)) => {
                 chart.config = cfg;
-                None
             }
             (Content::TimeAndSales(Some(panel)), VisualConfig::TimeAndSales(cfg)) => {
                 panel.config = cfg;
-                None
             }
             (Content::Ladder(Some(panel)), VisualConfig::Ladder(cfg)) => {
                 panel.config = cfg;
-                None
             }
-            _ => None,
+            _ => {}
         }
     }
 
