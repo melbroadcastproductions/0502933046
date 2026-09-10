@@ -432,9 +432,10 @@ impl KlineChart {
                 }
 
                 // priority 2, trades
-                let needs_trades = matches!(self.kind, KlineChartKind::Footprint { .. })
-                    || (matches!(self.kind, KlineChartKind::Candles)
-                        && self.visual_config.show_trade_bubbles);
+                // Footprint charts require historical REST trade backfilling to construct footprint volume profiles.
+                // Candlestick charts only display live/recent trade bubbles from the live WebSocket trade stream,
+                // avoiding massive REST trade backfill requests that fail on wide timeframes (e.g. 1h/4h/1d).
+                let needs_trades = matches!(self.kind, KlineChartKind::Footprint { .. });
 
                 if needs_trades
                     && !self.fetching_trades.0
@@ -2389,7 +2390,7 @@ fn draw_order_book_levels(
     market_type: exchange::adapter::MarketKind,
     threshold: f32,
     bar_scale_pct: f32,
-    palette: &Extended,
+    _palette: &Extended,
     right_edge_x: f32,
     scaling: f32,
     visible_lowest_price: Price,
@@ -2435,13 +2436,12 @@ fn draw_order_book_levels(
     let max_bar_width = (220.0 * (bar_scale_pct / 100.0).clamp(0.1, 1.0)) / scaling;
     let bar_height = 14.0 / scaling;
 
-    // Green for Bids (buy walls), Red for Asks (sell walls)
-    let bid_bg_color = palette.success.base.color.scale_alpha(0.75);
-    let ask_bg_color = palette.danger.base.color.scale_alpha(0.75);
+    // Dark green for Bids (buy walls), Dark red for Asks (sell walls)
+    let bid_bg_color = Color::from_rgb8(16, 120, 64).scale_alpha(0.85);
+    let ask_bg_color = Color::from_rgb8(140, 30, 30).scale_alpha(0.85);
 
-    // High contrast dark text for green bid bar readability, white text for dark red ask bar
-    let bid_text_color = Color::BLACK;
-    let ask_text_color = Color::WHITE;
+    // High contrast white text for both green and red bars and chart background
+    let text_color = Color::WHITE;
 
     for (price, qty, notional) in bids {
         let y = price_to_y(price);
@@ -2464,7 +2464,7 @@ fn draw_order_book_levels(
         frame.fill_text(canvas::Text {
             content: notional_label,
             position: Point::new(right_edge_x - (6.0 / scaling), y),
-            color: bid_text_color,
+            color: text_color,
             size: iced::Pixels(10.0 / scaling),
             align_x: Alignment::End.into(),
             align_y: Alignment::Center.into(),
@@ -2494,7 +2494,7 @@ fn draw_order_book_levels(
         frame.fill_text(canvas::Text {
             content: notional_label,
             position: Point::new(right_edge_x - (6.0 / scaling), y),
-            color: ask_text_color,
+            color: text_color,
             size: iced::Pixels(10.0 / scaling),
             align_x: Alignment::End.into(),
             align_y: Alignment::Center.into(),
