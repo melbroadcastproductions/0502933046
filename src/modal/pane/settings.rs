@@ -618,9 +618,28 @@ pub fn kline_cfg_view<'a>(
             Some("Show the latest datapoint label even when not hovering"),
             TooltipPosition::Top,
         );
+
+        let poc_checkbox = tooltip(
+            checkbox(cfg.show_poc)
+                .label("Show POC (Point of Control)")
+                .on_toggle(move |value| {
+                    Message::VisualConfigChanged(
+                        pane,
+                        VisualConfig::Kline(data::chart::kline::Config {
+                            show_poc: value,
+                            ..cfg
+                        }),
+                        false,
+                    )
+                }),
+            Some("Show Point of Control (highest volume level) line on each candle"),
+            TooltipPosition::Top,
+        );
+
         column![
-            text("Data labels").size(crate::style::text_size::SECTION),
+            text("Display").size(crate::style::text_size::SECTION),
             data_labels_checkbox,
+            poc_checkbox,
         ]
         .spacing(8)
     };

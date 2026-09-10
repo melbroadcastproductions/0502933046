@@ -1216,7 +1216,7 @@ impl canvas::Program<Message> for KlineChart {
                         earliest,
                         latest,
                         interval_to_x,
-                        |frame, x_position, kline, _| {
+                        |frame, x_position, kline, trades| {
                             draw_candle_dp(
                                 frame,
                                 price_to_y,
@@ -1224,6 +1224,8 @@ impl canvas::Program<Message> for KlineChart {
                                 palette,
                                 x_position,
                                 kline,
+                                trades,
+                                self.visual_config.show_poc,
                             );
                         },
                     );
@@ -1428,6 +1430,8 @@ fn draw_candle_dp(
     palette: &Extended,
     x_position: f32,
     kline: &Kline,
+    trades: &KlineTrades,
+    show_poc: bool,
 ) {
     let y_open = price_to_y(kline.open);
     let y_high = price_to_y(kline.high);
@@ -1455,6 +1459,23 @@ fn draw_candle_dp(
         Size::new(candle_width / 4.0, (y_high - y_low).abs()),
         wick_color,
     );
+
+    if show_poc {
+        let poc_price = trades.poc_price().unwrap_or_else(|| {
+            let mid = (kline.open.to_f64() + kline.close.to_f64() + kline.high.to_f64() + kline.low.to_f64()) / 4.0;
+            Price::from_f64(mid)
+        });
+
+        let y_poc = price_to_y(poc_price);
+        let poc_color = palette.warning.base.color;
+        let line_height = (candle_width * 0.25).clamp(1.5, 3.5);
+
+        frame.fill_rectangle(
+            Point::new(x_position - (candle_width * 0.6), y_poc - (line_height / 2.0)),
+            Size::new(candle_width * 1.2, line_height),
+            poc_color,
+        );
+    }
 }
 
 fn render_data_source<F>(
