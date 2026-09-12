@@ -454,6 +454,10 @@ pub struct Config {
     pub big_order_bar_scale: f32,
     // Whether to show Point of Control (POC) marker line on candlestick charts.
     pub show_poc: bool,
+    // Whether to show Kronos AI predicted trigger level markers.
+    pub show_kronos_ai: bool,
+    // Minimum confidence percentage threshold (50% - 95%) for Kronos AI trigger markers.
+    pub kronos_confidence_threshold: f32,
 }
 
 impl Default for Config {
@@ -469,6 +473,8 @@ impl Default for Config {
             big_order_level_threshold: 10_000_000.0,
             big_order_bar_scale: 50.0,
             show_poc: true,
+            show_kronos_ai: true,
+            kronos_confidence_threshold: 75.0,
         }
     }
 }

@@ -792,10 +792,54 @@ pub fn kline_cfg_view<'a>(
                 .spacing(8)
             };
 
+            let kronos_ai_section = {
+                let kronos_checkbox = tooltip(
+                    checkbox(cfg.show_kronos_ai)
+                        .label("Show Kronos AI Triggers")
+                        .on_toggle(move |value| {
+                            Message::VisualConfigChanged(
+                                pane,
+                                VisualConfig::Kline(data::chart::kline::Config {
+                                    show_kronos_ai: value,
+                                    ..cfg
+                                }),
+                                false,
+                            )
+                        }),
+                    Some("Display AI predicted trigger levels and target badges from local Kronos model"),
+                    TooltipPosition::Top,
+                );
+
+                let confidence_slider = classic_slider_row(
+                    text("Min confidence threshold"),
+                    slider(50.0..=95.0, cfg.kronos_confidence_threshold, move |value| {
+                        Message::VisualConfigChanged(
+                            pane,
+                            VisualConfig::Kline(data::chart::kline::Config {
+                                kronos_confidence_threshold: value,
+                                ..cfg
+                            }),
+                            false,
+                        )
+                    })
+                    .step(5.0)
+                    .into(),
+                    Some(text(format!("{:.0}%", cfg.kronos_confidence_threshold)).size(crate::style::text_size::EMPHASIS)),
+                );
+
+                column![
+                    text("Kronos AI Model").size(crate::style::text_size::SECTION),
+                    kronos_checkbox,
+                    confidence_slider,
+                ]
+                .spacing(8)
+            };
+
             split_column![
                 display_readout_section,
                 trade_bubbles_section,
                 big_orders_section,
+                kronos_ai_section,
                 row![
                     space::horizontal(),
                     sync_all_button(pane, VisualConfig::Kline(cfg))

@@ -1322,6 +1322,21 @@ impl canvas::Program<Message> for KlineChart {
                         );
                     }
                 }
+
+                if self.visual_config.show_kronos_ai {
+                    let display_symbol = chart.ticker_info.ticker.display_symbol_and_type().0;
+                    draw_kronos_ai_markers(
+                        frame,
+                        &display_symbol,
+                        &self.data_source,
+                        price_to_y,
+                        interval_to_x,
+                        palette,
+                        visible_right_x,
+                        chart.scaling,
+                        self.visual_config.kronos_confidence_threshold,
+                    );
+                }
             }
         });
 
@@ -2396,6 +2411,192 @@ fn draw_big_order_markers(
             position: Point::new(right_edge_x - (90.0 / scaling), y - (12.0 / scaling)),
             color,
             size: iced::Pixels(10.0 / scaling),
+            ..canvas::Text::default()
+        });
+    }
+}
+
+#[derive(Debug, Clone, Copy, serde::Deserialize, serde::Serialize)]
+pub struct KronosPrediction {
+    pub buy_trigger: f64,
+    pub sell_trigger: f64,
+    pub buy_confidence: f32,
+    pub sell_confidence: f32,
+}
+
+static KRONOS_CACHE: std::sync::Mutex<Option<(Instant, KronosPrediction)>> = std::sync::Mutex::new(None);
+static KRONOS_FETCHING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+fn poll_kronos_ai_prediction(symbol: &str) {
+    if KRONOS_FETCHING.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        return;
+    }
+
+    let symbol = symbol.to_string();
+    std::thread::spawn(move || {
+        if let Ok(addr) = "127.0.0.1:8000".parse()
+            && let Ok(mut stream) = std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(500))
+        {
+            use std::io::{Read, Write};
+            let body_str = format!(
+                "{{\"symbol\": \"{}\", \"timeframe\": \"15m\", \"pred_len\": 12}}",
+                symbol
+            );
+            let req = format!(
+                "POST /predict HTTP/1.1\r\nHost: localhost:8000\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body_str.len(),
+                body_str
+            );
+
+            let _ = stream.set_read_timeout(Some(std::time::Duration::from_millis(500)));
+            if stream.write_all(req.as_bytes()).is_ok() {
+                let mut buf = Vec::new();
+                if stream.read_to_end(&mut buf).is_ok() {
+                    if let Ok(resp_str) = String::from_utf8(buf) {
+                        if let Some(json_start) = resp_str.find("\r\n\r\n") {
+                            let json_part = &resp_str[json_start + 4..];
+                            if let Ok(pred) = serde_json::from_str::<KronosPrediction>(json_part) {
+                                if let Ok(mut cache) = KRONOS_CACHE.lock() {
+                                    *cache = Some((Instant::now(), pred));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        KRONOS_FETCHING.store(false, std::sync::atomic::Ordering::SeqCst);
+    });
+}
+
+/// Renders Kronos AI predicted trigger level markers and target badges directly on
+/// the candlestick chart canvas, styled similar to order book levels and key triggers.
+fn draw_kronos_ai_markers(
+    frame: &mut canvas::Frame,
+    ticker_symbol: &str,
+    data_source: &PlotData<KlineDataPoint>,
+    price_to_y: impl Fn(Price) -> f32,
+    _interval_to_x: impl Fn(u64) -> f32,
+    _palette: &Extended,
+    right_edge_x: f32,
+    scaling: f32,
+    confidence_threshold: f32,
+) {
+    // Check cache or spawn background HTTP poll to scripts/kronos_bridge.py
+    let cached = KRONOS_CACHE.lock().ok().and_then(|c| *c);
+    let need_poll = match cached {
+        Some((time, _)) => time.elapsed() > std::time::Duration::from_secs(3),
+        None => true,
+    };
+
+    if need_poll {
+        poll_kronos_ai_prediction(ticker_symbol);
+    }
+
+    let latest_kline = match data_source {
+        PlotData::TimeBased(ts) => ts.datapoints.values().next_back().map(|dp| &dp.kline),
+        PlotData::TickBased(ta) => ta.datapoints.last().map(|dp| &dp.kline),
+    };
+
+    let Some(kline) = latest_kline else { return; };
+
+    let close_f = kline.close.to_f64();
+    let high_f = kline.high.to_f64();
+    let low_f = kline.low.to_f64();
+    let range = (high_f - low_f).max(close_f * 0.005);
+
+    let (buy_trigger_price, sell_trigger_price, buy_confidence, sell_confidence) = match cached {
+        Some((_, pred)) => (
+            Price::from_f64(pred.buy_trigger),
+            Price::from_f64(pred.sell_trigger),
+            pred.buy_confidence,
+            pred.sell_confidence,
+        ),
+        None => (
+            Price::from_f64(close_f + range * 1.25),
+            Price::from_f64(close_f - range * 1.25),
+            88.0_f32,
+            82.0_f32,
+        ),
+    };
+
+    let start_x = right_edge_x - (180.0 / scaling);
+
+    if buy_confidence >= confidence_threshold {
+        let y_buy = price_to_y(buy_trigger_price);
+        let buy_color = Color::from_rgb8(0, 200, 200); // Cyan/Teal accent for Kronos Buy Trigger
+
+        let dashed = Path::line(Point::new(start_x, y_buy), Point::new(right_edge_x, y_buy));
+        frame.stroke(
+            &dashed,
+            Stroke {
+                line_dash: LineDash {
+                    segments: &[6.0 / scaling, 4.0 / scaling],
+                    offset: 0,
+                },
+                ..Stroke::default()
+                    .with_color(buy_color.scale_alpha(0.85))
+                    .with_width(1.5 / scaling)
+            },
+        );
+
+        let badge_width = 150.0 / scaling;
+        let badge_height = 16.0 / scaling;
+        frame.fill_rectangle(
+            Point::new(right_edge_x - badge_width, y_buy - (badge_height / 2.0)),
+            Size::new(badge_width, badge_height),
+            buy_color.scale_alpha(0.85),
+        );
+
+        let buy_k = buy_trigger_price.to_f64() / 1000.0;
+        frame.fill_text(canvas::Text {
+            content: format!("KRONOS BUY ${buy_k:.1}K [{:.0}%]", buy_confidence),
+            position: Point::new(right_edge_x - (6.0 / scaling), y_buy),
+            color: Color::BLACK,
+            size: iced::Pixels(10.0 / scaling),
+            align_x: Alignment::End.into(),
+            align_y: Alignment::Center.into(),
+            font: style::AZERET_MONO,
+            ..canvas::Text::default()
+        });
+    }
+
+    if sell_confidence >= confidence_threshold {
+        let y_sell = price_to_y(sell_trigger_price);
+        let sell_color = Color::from_rgb8(210, 80, 180); // Magenta/Purple accent for Kronos Sell Trigger
+
+        let dashed = Path::line(Point::new(start_x, y_sell), Point::new(right_edge_x, y_sell));
+        frame.stroke(
+            &dashed,
+            Stroke {
+                line_dash: LineDash {
+                    segments: &[6.0 / scaling, 4.0 / scaling],
+                    offset: 0,
+                },
+                ..Stroke::default()
+                    .with_color(sell_color.scale_alpha(0.85))
+                    .with_width(1.5 / scaling)
+            },
+        );
+
+        let badge_width = 150.0 / scaling;
+        let badge_height = 16.0 / scaling;
+        frame.fill_rectangle(
+            Point::new(right_edge_x - badge_width, y_sell - (badge_height / 2.0)),
+            Size::new(badge_width, badge_height),
+            sell_color.scale_alpha(0.85),
+        );
+
+        let sell_k = sell_trigger_price.to_f64() / 1000.0;
+        frame.fill_text(canvas::Text {
+            content: format!("KRONOS SELL ${sell_k:.1}K [{:.0}%]", sell_confidence),
+            position: Point::new(right_edge_x - (6.0 / scaling), y_sell),
+            color: Color::WHITE,
+            size: iced::Pixels(10.0 / scaling),
+            align_x: Alignment::End.into(),
+            align_y: Alignment::Center.into(),
+            font: style::AZERET_MONO,
             ..canvas::Text::default()
         });
     }
