@@ -2420,6 +2420,7 @@ fn draw_big_order_markers(
 pub struct KronosPrediction {
     pub buy_trigger: f64,
     pub sell_trigger: f64,
+    pub predicted_close: f64,
     pub buy_confidence: f32,
     pub sell_confidence: f32,
 }
@@ -2506,22 +2507,61 @@ fn draw_kronos_ai_markers(
     let low_f = kline.low.to_f64();
     let range = (high_f - low_f).max(close_f * 0.005);
 
-    let (buy_trigger_price, sell_trigger_price, buy_confidence, sell_confidence) = match cached {
+    let (buy_trigger_price, sell_trigger_price, pred_close_price, buy_confidence, sell_confidence) = match cached {
         Some((_, pred)) => (
             Price::from_f64(pred.buy_trigger),
             Price::from_f64(pred.sell_trigger),
+            Price::from_f64(pred.predicted_close),
             pred.buy_confidence,
             pred.sell_confidence,
         ),
         None => (
             Price::from_f64(close_f + range * 1.25),
             Price::from_f64(close_f - range * 1.25),
+            Price::from_f64(close_f + range * 0.35),
             88.0_f32,
             82.0_f32,
         ),
     };
 
     let start_x = right_edge_x - (180.0 / scaling);
+
+    let y_pred = price_to_y(pred_close_price);
+    let pred_color = Color::from_rgb8(255, 200, 50); // Gold accent for predicted close
+
+    let dashed = Path::line(Point::new(start_x, y_pred), Point::new(right_edge_x, y_pred));
+    frame.stroke(
+        &dashed,
+        Stroke {
+            line_dash: LineDash {
+                segments: &[6.0 / scaling, 4.0 / scaling],
+                offset: 0,
+            },
+            ..Stroke::default()
+                .with_color(pred_color.scale_alpha(0.85))
+                .with_width(1.5 / scaling)
+        },
+    );
+
+    let badge_width = 150.0 / scaling;
+    let badge_height = 16.0 / scaling;
+    frame.fill_rectangle(
+        Point::new(right_edge_x - badge_width, y_pred - (badge_height / 2.0)),
+        Size::new(badge_width, badge_height),
+        pred_color.scale_alpha(0.85),
+    );
+
+    let pred_k = pred_close_price.to_f64() / 1000.0;
+    frame.fill_text(canvas::Text {
+        content: format!("KRONOS PRED ${pred_k:.1}K"),
+        position: Point::new(right_edge_x - (6.0 / scaling), y_pred),
+        color: Color::BLACK,
+        size: iced::Pixels(10.0 / scaling),
+        align_x: Alignment::End.into(),
+        align_y: Alignment::Center.into(),
+        font: style::AZERET_MONO,
+        ..canvas::Text::default()
+    });
 
     if buy_confidence >= confidence_threshold {
         let y_buy = price_to_y(buy_trigger_price);

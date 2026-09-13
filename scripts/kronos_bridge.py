@@ -46,7 +46,7 @@ class KronosRequestHandler(BaseHTTPRequestHandler):
                 # Parse high, low, close from text output if successful
                 highs = [float(h) for h in re.findall(r'High:\s*([\d\.]+)', forecast_text)]
                 lows = [float(l) for l in re.findall(r'Low:\s*([\d\.]+)', forecast_text)]
-                closes = [float(c) for l in re.findall(r'Close:\s*([\d\.]+)', forecast_text)]
+                closes = [float(c) for c in re.findall(r'Close:\s*([\d\.]+)', forecast_text)]
 
                 if highs and lows:
                     pred_high = max(highs)
