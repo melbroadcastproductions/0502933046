@@ -206,7 +206,7 @@ class KronosRequestHandler(BaseHTTPRequestHandler):
             self.send_header('Connection', 'keep-alive')
             self.end_headers()
             try:
-                msg = f"event: endpoint\r\ndata: /messages\r\n\r\n"
+                msg = f"event: endpoint\r\ndata: /messages?session_id=1\r\n\r\n"
                 self.wfile.write(msg.encode('utf-8'))
             except (ConnectionAbortedError, BrokenPipeError, ConnectionResetError, OSError):
                 pass
