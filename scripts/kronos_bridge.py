@@ -19,6 +19,16 @@ except ImportError:
         pass
 
 class KronosRequestHandler(BaseHTTPRequestHandler):
+    def handle(self):
+        try:
+            super().handle()
+        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError, OSError):
+            pass
+
+    def log_message(self, format, *args):
+        # Quiet standard server logging to keep terminal output clean
+        pass
+
     def do_POST(self):
         content_length = int(self.headers.get('Content-Length', 0))
         body = self.rfile.read(content_length)
