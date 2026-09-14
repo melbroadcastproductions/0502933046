@@ -83,13 +83,19 @@ class KronosRequestHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
             self.end_headers()
-            self.wfile.write(json.dumps(response).encode('utf-8'))
+            try:
+                self.wfile.write(json.dumps(response).encode('utf-8'))
+            except (ConnectionAbortedError, BrokenPipeError, ConnectionResetError, OSError):
+                pass
 
         except Exception as e:
-            self.send_response(500)
-            self.send_header('Content-Type', 'application/json')
-            self.end_headers()
-            self.wfile.write(json.dumps({"status": "error", "error": str(e)}).encode('utf-8'))
+            try:
+                self.send_response(500)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"status": "error", "error": str(e)}).encode('utf-8'))
+            except (ConnectionAbortedError, BrokenPipeError, ConnectionResetError, OSError):
+                pass
 
     def do_GET(self):
         self.send_response(200)

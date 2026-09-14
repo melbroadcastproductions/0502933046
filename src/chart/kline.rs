@@ -2436,7 +2436,7 @@ fn poll_kronos_ai_prediction(symbol: &str) {
     let symbol = symbol.to_string();
     std::thread::spawn(move || {
         if let Ok(addr) = "127.0.0.1:8000".parse()
-            && let Ok(mut stream) = std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(500))
+            && let Ok(mut stream) = std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(2000))
         {
             use std::io::{Read, Write};
             let body_str = format!(
@@ -2449,7 +2449,7 @@ fn poll_kronos_ai_prediction(symbol: &str) {
                 body_str
             );
 
-            let _ = stream.set_read_timeout(Some(std::time::Duration::from_millis(500)));
+            let _ = stream.set_read_timeout(Some(std::time::Duration::from_millis(2000)));
             if stream.write_all(req.as_bytes()).is_ok() {
                 let mut buf = Vec::new();
                 if stream.read_to_end(&mut buf).is_ok() {
