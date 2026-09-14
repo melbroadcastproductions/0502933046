@@ -137,9 +137,9 @@ class KronosRequestHandler(BaseHTTPRequestHandler):
                 pass
 
 def run(port=8000):
-    server_address = ('', port)
+    server_address = ('0.0.0.0', port)
     httpd = HTTPServer(server_address, KronosRequestHandler)
-    print(f"Kronos AI Bridge Server running on http://localhost:{port}...")
+    print(f"Kronos AI Bridge Server running on http://0.0.0.0:{port}...")
     httpd.serve_forever()
 
 if __name__ == '__main__':
