@@ -8,8 +8,27 @@ from mcp.server.mcpserver import MCPServer, Context
 # Initialize the new v2 server object
 mcp = MCPServer("Kronos Financial Predictor")
 
-# Load Kronos dependencies inside the server wrapper
-from model import Kronos, KronosTokenizer, KronosPredictor
+# Global lazy/preloaded model cache to avoid per-request model loading overhead
+GLOBAL_PREDICTOR = None
+
+def get_kronos_predictor():
+    global GLOBAL_PREDICTOR
+    if GLOBAL_PREDICTOR is None:
+        try:
+            from model import Kronos, KronosTokenizer, KronosPredictor
+            tokenizer = KronosTokenizer.from_pretrained("NeoQuasar/Kronos-Tokenizer-base")
+            model = Kronos.from_pretrained("NeoQuasar/Kronos-base")
+            GLOBAL_PREDICTOR = KronosPredictor(model, tokenizer, device="cpu", max_context=512)
+        except Exception as e:
+            print(f"Warning: Failed to preload Kronos model at startup: {e}")
+            GLOBAL_PREDICTOR = None
+    return GLOBAL_PREDICTOR
+
+# Warm up model at module import time so startup/initialize responds near-instantly
+try:
+    get_kronos_predictor()
+except Exception:
+    pass
 
 @mcp.tool()
 def predict_crypto(symbol: str = "BTC/USDT", timeframe: str = "1h", pred_len: int = 24) -> str:
@@ -39,10 +58,13 @@ def predict_crypto(symbol: str = "BTC/USDT", timeframe: str = "1h", pred_len: in
         x_timeline = df['timestamp']
         y_timeline = pd.Series(future_stamps)
 
-        # 3. Load Kronos Core
-        tokenizer = KronosTokenizer.from_pretrained("NeoQuasar/Kronos-Tokenizer-base")
-        model = Kronos.from_pretrained("NeoQuasar/Kronos-base")
-        predictor = KronosPredictor(model, tokenizer, device="cpu", max_context=512)
+        # 3. Get preloaded Kronos Core
+        predictor = get_kronos_predictor()
+        if predictor is None:
+            from model import Kronos, KronosTokenizer, KronosPredictor
+            tokenizer = KronosTokenizer.from_pretrained("NeoQuasar/Kronos-Tokenizer-base")
+            model = Kronos.from_pretrained("NeoQuasar/Kronos-base")
+            predictor = KronosPredictor(model, tokenizer, device="cpu", max_context=512)
 
         # 4. Predict
         forecast = predictor.predict(
