@@ -1,7 +1,15 @@
 import sys
+import os
 import pandas as pd
 import ccxt
 from datetime import datetime, timedelta
+
+# Ensure script directory, parent directory, and current working directory are in sys.path
+script_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(script_dir)
+for path in [script_dir, parent_dir, os.getcwd()]:
+    if path not in sys.path:
+        sys.path.insert(0, path)
 # FIX: Using the brand new v2 server module layout
 from mcp.server.mcpserver import MCPServer, Context
 

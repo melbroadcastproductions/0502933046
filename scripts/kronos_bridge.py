@@ -1,10 +1,18 @@
 import json
 import os
+import sys
 import re
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import pandas as pd
 import ccxt
 from datetime import datetime, timedelta
+
+# Ensure script directory, parent directory, and current working directory are in sys.path
+script_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(script_dir)
+for path in [script_dir, parent_dir, os.getcwd()]:
+    if path not in sys.path:
+        sys.path.insert(0, path)
 
 # Try importing predict_crypto from kronos_mcp.py
 PREDICT_CRYPTO_AVAILABLE = False
