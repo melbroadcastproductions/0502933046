@@ -2487,7 +2487,7 @@ fn draw_kronos_ai_markers(
     // Check cache or spawn background HTTP poll to scripts/kronos_bridge.py
     let cached = KRONOS_CACHE.lock().ok().and_then(|c| *c);
     let need_poll = match cached {
-        Some((time, _)) => time.elapsed() > std::time::Duration::from_secs(3),
+        Some((time, _)) => time.elapsed() > std::time::Duration::from_millis(5000),
         None => true,
     };
 
