@@ -19,16 +19,55 @@ mcp = MCPServer("Kronos Financial Predictor")
 # Global lazy/preloaded model cache to avoid per-request model loading overhead
 GLOBAL_PREDICTOR = None
 
+def load_kronos_classes():
+    # Dynamic search for Kronos model modules across various installation structures
+    candidates = []
+
+    if "KRONOS_DIR" in os.environ:
+        candidates.append(os.environ["KRONOS_DIR"])
+
+    cwd = os.getcwd()
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    parent_dir = os.path.dirname(script_dir)
+
+    for base in [cwd, script_dir, parent_dir]:
+        candidates.append(base)
+        for root, dirs, _ in os.walk(base):
+            for d in dirs:
+                if 'kronos' in d.lower() or 'model' in d.lower():
+                    candidates.append(os.path.join(root, d))
+            break # Search top level subdirs
+
+    for candidate in candidates:
+        if candidate and candidate not in sys.path and os.path.exists(candidate):
+            sys.path.insert(0, candidate)
+
+    # Attempt imports across common naming conventions
+    import_attempts = [
+        ("model", ["Kronos", "KronosTokenizer", "KronosPredictor"]),
+        ("kronos", ["Kronos", "KronosTokenizer", "KronosPredictor"]),
+        ("kronos.model", ["Kronos", "KronosTokenizer", "KronosPredictor"]),
+        ("model.kronos", ["Kronos", "KronosTokenizer", "KronosPredictor"]),
+    ]
+
+    for mod_name, class_names in import_attempts:
+        try:
+            mod = __import__(mod_name, fromlist=class_names)
+            return getattr(mod, "Kronos"), getattr(mod, "KronosTokenizer"), getattr(mod, "KronosPredictor")
+        except (ImportError, AttributeError):
+            continue
+
+    raise ImportError("No module named 'model'")
+
 def get_kronos_predictor():
     global GLOBAL_PREDICTOR
     if GLOBAL_PREDICTOR is None:
         try:
-            from model import Kronos, KronosTokenizer, KronosPredictor
+            Kronos, KronosTokenizer, KronosPredictor = load_kronos_classes()
             tokenizer = KronosTokenizer.from_pretrained("NeoQuasar/Kronos-Tokenizer-base")
             model = Kronos.from_pretrained("NeoQuasar/Kronos-base")
             GLOBAL_PREDICTOR = KronosPredictor(model, tokenizer, device="cpu", max_context=512)
-        except Exception as e:
-            print(f"Warning: Failed to preload Kronos model at startup: {e}")
+        except Exception:
             GLOBAL_PREDICTOR = None
     return GLOBAL_PREDICTOR
 
@@ -69,7 +108,7 @@ def predict_crypto(symbol: str = "BTC/USDT", timeframe: str = "1h", pred_len: in
         # 3. Get preloaded Kronos Core
         predictor = get_kronos_predictor()
         if predictor is None:
-            from model import Kronos, KronosTokenizer, KronosPredictor
+            Kronos, KronosTokenizer, KronosPredictor = load_kronos_classes()
             tokenizer = KronosTokenizer.from_pretrained("NeoQuasar/Kronos-Tokenizer-base")
             model = Kronos.from_pretrained("NeoQuasar/Kronos-base")
             predictor = KronosPredictor(model, tokenizer, device="cpu", max_context=512)
