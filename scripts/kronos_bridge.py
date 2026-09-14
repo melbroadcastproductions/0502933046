@@ -98,10 +98,25 @@ class KronosRequestHandler(BaseHTTPRequestHandler):
                 pass
 
     def do_GET(self):
-        self.send_response(200)
-        self.send_header('Content-Type', 'application/json')
-        self.end_headers()
-        self.wfile.write(json.dumps({"status": "running", "mcp_available": PREDICT_CRYPTO_AVAILABLE}).encode('utf-8'))
+        if self.path.startswith('/sse'):
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/event-stream')
+            self.send_header('Cache-Control', 'no-cache')
+            self.send_header('Connection', 'keep-alive')
+            self.end_headers()
+            try:
+                msg = f"event: endpoint\r\ndata: /messages\r\n\r\n"
+                self.wfile.write(msg.encode('utf-8'))
+            except (ConnectionAbortedError, BrokenPipeError, ConnectionResetError, OSError):
+                pass
+        else:
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            try:
+                self.wfile.write(json.dumps({"status": "running", "mcp_available": PREDICT_CRYPTO_AVAILABLE}).encode('utf-8'))
+            except (ConnectionAbortedError, BrokenPipeError, ConnectionResetError, OSError):
+                pass
 
 def run(port=8000):
     server_address = ('', port)
