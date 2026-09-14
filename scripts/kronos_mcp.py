@@ -62,4 +62,7 @@ def predict_crypto(symbol: str = "BTC/USDT", timeframe: str = "1h", pred_len: in
         return f"Error running Kronos calculation loop: {str(e)}"
 
 if __name__ == "__main__":
-    mcp.run()
+    try:
+        mcp.run(transport="sse", host="0.0.0.0", port=8000)
+    except TypeError:
+        mcp.run()
