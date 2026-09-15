@@ -2425,23 +2425,27 @@ pub struct KronosPrediction {
     pub sell_confidence: f32,
 }
 
-static KRONOS_CACHE: std::sync::Mutex<Option<(Instant, KronosPrediction)>> = std::sync::Mutex::new(None);
+static KRONOS_CACHE: std::sync::Mutex<std::collections::HashMap<(String, String), (Instant, KronosPrediction)>> =
+    std::sync::Mutex::new(std::collections::HashMap::new());
 static KRONOS_FETCHING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-fn poll_kronos_ai_prediction(symbol: &str) {
+fn poll_kronos_ai_prediction(symbol: &str, timeframe: &str) {
     if KRONOS_FETCHING.swap(true, std::sync::atomic::Ordering::SeqCst) {
         return;
     }
 
     let symbol = symbol.to_string();
+    let timeframe = timeframe.to_string();
+    let cache_key = (symbol.clone(), timeframe.clone());
+
     std::thread::spawn(move || {
         if let Ok(addr) = "127.0.0.1:8000".parse()
             && let Ok(mut stream) = std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(2000))
         {
             use std::io::{Read, Write};
             let body_str = format!(
-                "{{\"symbol\": \"{}\", \"timeframe\": \"15m\", \"pred_len\": 12}}",
-                symbol
+                "{{\"symbol\": \"{}\", \"timeframe\": \"{}\", \"pred_len\": 12}}",
+                symbol, timeframe
             );
             let req = format!(
                 "POST /predict HTTP/1.1\r\nHost: localhost:8000\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
@@ -2458,7 +2462,7 @@ fn poll_kronos_ai_prediction(symbol: &str) {
                             let json_part = &resp_str[json_start + 4..];
                             if let Ok(pred) = serde_json::from_str::<KronosPrediction>(json_part) {
                                 if let Ok(mut cache) = KRONOS_CACHE.lock() {
-                                    *cache = Some((Instant::now(), pred));
+                                    cache.insert(cache_key, (Instant::now(), pred));
                                 }
                             }
                         }
@@ -2484,15 +2488,22 @@ fn draw_kronos_ai_markers(
     scaling: f32,
     confidence_threshold: f32,
 ) {
-    // Check cache or spawn background HTTP poll to scripts/kronos_bridge.py
-    let cached = KRONOS_CACHE.lock().ok().and_then(|c| *c);
+    let timeframe_str = match data_source {
+        PlotData::TimeBased(ts) => ts.interval.to_string(),
+        PlotData::TickBased(ta) => format!("{}t", ta.interval.0),
+    };
+
+    let cache_key = (ticker_symbol.to_string(), timeframe_str.clone());
+
+    // Check cache per (symbol, timeframe) or spawn background HTTP poll
+    let cached = KRONOS_CACHE.lock().ok().and_then(|c| c.get(&cache_key).copied());
     let need_poll = match cached {
         Some((time, _)) => time.elapsed() > std::time::Duration::from_millis(5000),
         None => true,
     };
 
     if need_poll {
-        poll_kronos_ai_prediction(ticker_symbol);
+        poll_kronos_ai_prediction(ticker_symbol, &timeframe_str);
     }
 
     let latest_kline = match data_source {
