@@ -2518,22 +2518,17 @@ fn draw_kronos_ai_markers(
     let low_f = kline.low.to_f64();
     let range = (high_f - low_f).max(close_f * 0.005);
 
-    let (buy_trigger_price, sell_trigger_price, pred_close_price, buy_confidence, sell_confidence) = match cached {
-        Some((_, pred)) => (
-            Price::from_f64(pred.buy_trigger),
-            Price::from_f64(pred.sell_trigger),
-            Price::from_f64(pred.predicted_close),
-            pred.buy_confidence,
-            pred.sell_confidence,
-        ),
-        None => (
-            Price::from_f64(close_f + range * 1.25),
-            Price::from_f64(close_f - range * 1.25),
-            Price::from_f64(close_f + range * 0.35),
-            88.0_f32,
-            82.0_f32,
-        ),
+    let Some((_, pred)) = cached else {
+        return;
     };
+
+    let (buy_trigger_price, sell_trigger_price, pred_close_price, buy_confidence, sell_confidence) = (
+        Price::from_f64(pred.buy_trigger),
+        Price::from_f64(pred.sell_trigger),
+        Price::from_f64(pred.predicted_close),
+        pred.buy_confidence,
+        pred.sell_confidence,
+    );
 
     let start_x = right_edge_x - (180.0 / scaling);
 
@@ -2675,6 +2670,9 @@ fn draw_order_book_levels(
         levels
             .iter()
             .filter_map(|(p, q)| {
+                if *p < visible_lowest_price || *p > visible_highest_price {
+                    return None;
+                }
                 let notional = market_type.qty_in_quote_value(*q, *p, size_in_quote_ccy);
                 if notional >= f64::from(threshold) {
                     Some((*p, *q, notional))
