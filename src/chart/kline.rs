@@ -2664,9 +2664,6 @@ fn draw_order_book_levels(
         levels
             .iter()
             .filter_map(|(p, q)| {
-                if *p < visible_lowest_price || *p > visible_highest_price {
-                    return None;
-                }
                 let notional = market_type.qty_in_quote_value(*q, *p, size_in_quote_ccy);
                 if notional >= f64::from(threshold) {
                     Some((*p, *q, notional))
