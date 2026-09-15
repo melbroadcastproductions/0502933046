@@ -810,6 +810,23 @@ pub fn kline_cfg_view<'a>(
                     TooltipPosition::Top,
                 );
 
+                let trade_box_checkbox = tooltip(
+                    checkbox(cfg.show_kronos_trade_box)
+                        .label("Show Risk/Reward Trade Setup Box")
+                        .on_toggle(move |value| {
+                            Message::VisualConfigChanged(
+                                pane,
+                                VisualConfig::Kline(data::chart::kline::Config {
+                                    show_kronos_trade_box: value,
+                                    ..cfg
+                                }),
+                                false,
+                            )
+                        }),
+                    Some("Overlay TradingView-style Risk/Reward trade setup box for predicted trade"),
+                    TooltipPosition::Top,
+                );
+
                 let confidence_slider = classic_slider_row(
                     text("Min confidence threshold"),
                     slider(50.0..=95.0, cfg.kronos_confidence_threshold, move |value| {
@@ -830,6 +847,7 @@ pub fn kline_cfg_view<'a>(
                 column![
                     text("Kronos AI Model").size(crate::style::text_size::SECTION),
                     kronos_checkbox,
+                    trade_box_checkbox,
                     confidence_slider,
                 ]
                 .spacing(8)

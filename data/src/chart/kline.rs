@@ -458,6 +458,8 @@ pub struct Config {
     pub show_kronos_ai: bool,
     // Minimum confidence percentage threshold (50% - 95%) for Kronos AI trigger markers.
     pub kronos_confidence_threshold: f32,
+    // Whether to render the predicted Risk/Reward trade setup box on chart.
+    pub show_kronos_trade_box: bool,
 }
 
 impl Default for Config {
@@ -475,6 +477,7 @@ impl Default for Config {
             show_poc: true,
             show_kronos_ai: true,
             kronos_confidence_threshold: 75.0,
+            show_kronos_trade_box: true,
         }
     }
 }

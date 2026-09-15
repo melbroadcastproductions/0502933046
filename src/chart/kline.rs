@@ -1335,6 +1335,7 @@ impl canvas::Program<Message> for KlineChart {
                         visible_right_x,
                         chart.scaling,
                         self.visual_config.kronos_confidence_threshold,
+                        self.visual_config.show_kronos_trade_box,
                     );
                 }
             }
@@ -2489,6 +2490,7 @@ fn draw_kronos_ai_markers(
     right_edge_x: f32,
     scaling: f32,
     confidence_threshold: f32,
+    show_trade_box: bool,
 ) {
     let timeframe_str = match data_source {
         PlotData::TimeBased(ts) => ts.interval.to_string(),
@@ -2646,56 +2648,58 @@ fn draw_kronos_ai_markers(
         });
     }
 
-    // Render Risk/Reward Trade Setup Box
-    let is_bullish = pred_close_price.to_f64() >= close_f;
-    let entry_y = price_to_y(Price::from_f64(close_f));
-    let tp_y = price_to_y(pred_close_price);
+    // Render Risk/Reward Trade Setup Box when enabled
+    if show_trade_box {
+        let is_bullish = pred_close_price.to_f64() >= close_f;
+        let entry_y = price_to_y(Price::from_f64(close_f));
+        let tp_y = price_to_y(pred_close_price);
 
-    let risk_offset = (close_f - pred_close_price.to_f64()).abs() * 0.5;
-    let sl_price = if is_bullish {
-        Price::from_f64(close_f - risk_offset.max(close_f * 0.003))
-    } else {
-        Price::from_f64(close_f + risk_offset.max(close_f * 0.003))
-    };
-    let sl_y = price_to_y(sl_price);
+        // Dynamically compute Stop Loss based on forecast triggers / swing boundary
+        let sl_price = if is_bullish {
+            Price::from_f64(sell_trigger_price.to_f64().min(close_f * 0.992))
+        } else {
+            Price::from_f64(buy_trigger_price.to_f64().max(close_f * 1.008))
+        };
+        let sl_y = price_to_y(sl_price);
 
-    let box_left = right_edge_x - (160.0 / scaling);
-    let box_right = right_edge_x - (10.0 / scaling);
-    let box_width = box_right - box_left;
+        let box_left = right_edge_x - (160.0 / scaling);
+        let box_right = right_edge_x - (10.0 / scaling);
+        let box_width = box_right - box_left;
 
-    // Green Take Profit Area
-    let tp_top = entry_y.min(tp_y);
-    let tp_height = (entry_y - tp_y).abs().max(10.0 / scaling);
-    frame.fill_rectangle(
-        Point::new(box_left, tp_top),
-        Size::new(box_width, tp_height),
-        Color::from_rgb8(16, 150, 70).scale_alpha(0.25),
-    );
+        // Green Take Profit Area
+        let tp_top = entry_y.min(tp_y);
+        let tp_height = (entry_y - tp_y).abs().max(10.0 / scaling);
+        frame.fill_rectangle(
+            Point::new(box_left, tp_top),
+            Size::new(box_width, tp_height),
+            Color::from_rgb8(16, 150, 70).scale_alpha(0.25),
+        );
 
-    // Red Stop Loss Area
-    let sl_top = entry_y.min(sl_y);
-    let sl_height = (entry_y - sl_y).abs().max(10.0 / scaling);
-    frame.fill_rectangle(
-        Point::new(box_left, sl_top),
-        Size::new(box_width, sl_height),
-        Color::from_rgb8(180, 40, 40).scale_alpha(0.25),
-    );
+        // Red Stop Loss Area
+        let sl_top = entry_y.min(sl_y);
+        let sl_height = (entry_y - sl_y).abs().max(10.0 / scaling);
+        frame.fill_rectangle(
+            Point::new(box_left, sl_top),
+            Size::new(box_width, sl_height),
+            Color::from_rgb8(180, 40, 40).scale_alpha(0.25),
+        );
 
-    // Calculate Risk : Reward Ratio
-    let reward = (pred_close_price.to_f64() - close_f).abs();
-    let risk = (sl_price.to_f64() - close_f).abs();
-    let rr_ratio = if risk > 0.0 { reward / risk } else { 1.5 };
+        // Calculate Risk : Reward Ratio
+        let reward = (pred_close_price.to_f64() - close_f).abs();
+        let risk = (sl_price.to_f64() - close_f).abs();
+        let rr_ratio = if risk > 0.0 { reward / risk } else { 1.5 };
 
-    let rr_label = format!("PREDICTED TRADE R:R {:.2}", rr_ratio);
-    frame.fill_text(canvas::Text {
-        content: rr_label,
-        position: Point::new(box_left + (8.0 / scaling), entry_y),
-        color: Color::WHITE,
-        size: iced::Pixels(10.0 / scaling),
-        align_y: Alignment::Center.into(),
-        font: style::AZERET_MONO,
-        ..canvas::Text::default()
-    });
+        let rr_label = format!("PREDICTED TRADE R:R {:.2}", rr_ratio);
+        frame.fill_text(canvas::Text {
+            content: rr_label,
+            position: Point::new(box_left + (8.0 / scaling), entry_y),
+            color: Color::WHITE,
+            size: iced::Pixels(10.0 / scaling),
+            align_y: Alignment::Center.into(),
+            font: style::AZERET_MONO,
+            ..canvas::Text::default()
+        });
+    }
 }
 
 /// Marks the key major resting bid and ask levels from the order book snapshot

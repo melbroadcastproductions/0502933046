@@ -144,10 +144,10 @@ def predict_crypto(symbol: str = "BTC/USDT", timeframe: str = "1h", pred_len: in
         columns = ['timestamp', 'open', 'high', 'low', 'close', 'volume']
         live_df = pd.DataFrame(ohlcv, columns=columns)
 
-        # 2. Align timestamps to local clock
+        # 2. Align timestamps to local clock with support for all timeframes
         now_time = datetime.now().replace(second=0, microsecond=0)
-        freq_map = {"1m": 1, "5m": 5, "15m": 15, "1h": 60, "4h": 240, "1d": 1440}
-        minutes_per_bar = freq_map.get(timeframe, 60)
+        freq_map = {"1m": 1, "3m": 3, "4m": 4, "5m": 5, "15m": 15, "30m": 30, "1h": 60, "2h": 120, "4h": 240, "1d": 1440}
+        minutes_per_bar = freq_map.get(timeframe.lower(), 60)
 
         history_times = [now_time - timedelta(minutes=i * minutes_per_bar) for i in range(len(live_df))]
         history_times.reverse()
