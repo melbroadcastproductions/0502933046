@@ -1317,8 +1317,8 @@ impl canvas::Program<Message> for KlineChart {
                             palette,
                             visible_right_x,
                             chart.scaling,
-                            visible_lowest_price,
-                            visible_highest_price,
+                            visible_lowest_price.min(visible_highest_price),
+                            visible_lowest_price.max(visible_highest_price),
                         );
                     }
                 }
@@ -2453,7 +2453,7 @@ fn poll_kronos_ai_prediction(symbol: &str, timeframe: &str) {
                 body_str
             );
 
-            let _ = stream.set_read_timeout(Some(std::time::Duration::from_millis(2000)));
+            let _ = stream.set_read_timeout(Some(std::time::Duration::from_millis(10000)));
             if stream.write_all(req.as_bytes()).is_ok() {
                 let mut buf = Vec::new();
                 if stream.read_to_end(&mut buf).is_ok() {

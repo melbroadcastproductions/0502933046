@@ -128,15 +128,20 @@ class KronosRequestHandler(BaseHTTPRequestHandler):
             # Handle REST prediction requests from Flowsurface Candlestick chart
             raw_symbol = req_data.get('symbol', 'BTCUSDT')
 
-            # Format symbol for CCXT e.g. "BTC/USDT"
-            if '/' not in raw_symbol:
-                if raw_symbol.endswith('USDT'):
-                    base = raw_symbol[:-4]
+            # Strip exchange suffixes e.g. "ETHUSDT.P", "ETHUSDT_PERP", "ETH/USDT:USDT"
+            clean_sym = raw_symbol.upper().replace('.P', '').replace('_PERP', '').replace(' PERP', '')
+            if ':' in clean_sym:
+                clean_sym = clean_sym.split(':')[0]
+
+            # Format symbol for CCXT e.g. "ETH/USDT"
+            if '/' not in clean_sym:
+                if clean_sym.endswith('USDT'):
+                    base = clean_sym[:-4]
                     symbol = f"{base}/USDT"
                 else:
-                    symbol = f"{raw_symbol}/USDT"
+                    symbol = f"{clean_sym}/USDT"
             else:
-                symbol = raw_symbol
+                symbol = clean_sym
 
             timeframe = req_data.get('timeframe', '15m')
             pred_len = req_data.get('pred_len', 24)
@@ -153,22 +158,23 @@ class KronosRequestHandler(BaseHTTPRequestHandler):
                     pred_high = max(highs)
                     pred_low = min(lows)
                     pred_close = closes[-1] if closes else (pred_high + pred_low) / 2.0
-                else:
-                    pred_high = 82500.0
-                    pred_low = 78000.0
-                    pred_close = 80000.0
 
-            else:
-                # Standalone fallback mode if model dependencies are loading
-                exchange = ccxt.binance({'enableRateLimit': True})
-                ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=50)
-                df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-                last_close = float(df['close'].iloc[-1])
-                range_f = float(df['high'].max() - df['low'].min())
+            if 'pred_high' not in locals() or pred_high <= 0.0:
+                # Dynamic symbol-proportional fallback if predictions fail
+                try:
+                    exchange = ccxt.binance({'enableRateLimit': True})
+                    ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=50)
+                    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+                    last_close = float(df['close'].iloc[-1])
+                    range_f = float(df['high'].max() - df['low'].min())
 
-                pred_high = last_close + range_f * 0.5
-                pred_low = last_close - range_f * 0.5
-                pred_close = last_close + range_f * 0.1
+                    pred_high = last_close + range_f * 0.5
+                    pred_low = last_close - range_f * 0.5
+                    pred_close = last_close + range_f * 0.1
+                except Exception:
+                    pred_high = 0.0
+                    pred_low = 0.0
+                    pred_close = 0.0
 
             response = {
                 "status": "ok",
