@@ -2415,56 +2415,6 @@ fn draw_big_order_markers(
         });
     }
 
-    // Render Risk/Reward Trade Setup Box and Predicted Trajectory Path
-    let is_bullish = pred_close_price.to_f64() >= close_f;
-    let entry_y = price_to_y(Price::from_f64(close_f));
-    let tp_y = price_to_y(pred_close_price);
-
-    let risk_offset = (close_f - pred_close_price.to_f64()).abs() * 0.5;
-    let sl_price = if is_bullish {
-        Price::from_f64(close_f - risk_offset.max(close_f * 0.003))
-    } else {
-        Price::from_f64(close_f + risk_offset.max(close_f * 0.003))
-    };
-    let sl_y = price_to_y(sl_price);
-
-    let box_left = right_edge_x - (160.0 / scaling);
-    let box_right = right_edge_x - (10.0 / scaling);
-    let box_width = box_right - box_left;
-
-    // Green Take Profit Area
-    let tp_top = entry_y.min(tp_y);
-    let tp_height = (entry_y - tp_y).abs().max(10.0 / scaling);
-    frame.fill_rectangle(
-        Point::new(box_left, tp_top),
-        Size::new(box_width, tp_height),
-        Color::from_rgb8(16, 150, 70).scale_alpha(0.25),
-    );
-
-    // Red Stop Loss Area
-    let sl_top = entry_y.min(sl_y);
-    let sl_height = (entry_y - sl_y).abs().max(10.0 / scaling);
-    frame.fill_rectangle(
-        Point::new(box_left, sl_top),
-        Size::new(box_width, sl_height),
-        Color::from_rgb8(180, 40, 40).scale_alpha(0.25),
-    );
-
-    // Calculate Risk : Reward Ratio
-    let reward = (pred_close_price.to_f64() - close_f).abs();
-    let risk = (sl_price.to_f64() - close_f).abs();
-    let rr_ratio = if risk > 0.0 { reward / risk } else { 1.5 };
-
-    let rr_label = format!("PREDICTED TRADE R:R {:.2}", rr_ratio);
-    frame.fill_text(canvas::Text {
-        content: rr_label,
-        position: Point::new(box_left + (8.0 / scaling), entry_y),
-        color: Color::WHITE,
-        size: iced::Pixels(10.0 / scaling),
-        align_y: Alignment::Center.into(),
-        font: style::AZERET_MONO,
-        ..canvas::Text::default()
-    });
 }
 
 #[derive(Debug, Clone, Copy, serde::Deserialize, serde::Serialize)]
@@ -2476,8 +2426,9 @@ pub struct KronosPrediction {
     pub sell_confidence: f32,
 }
 
-static KRONOS_CACHE: std::sync::Mutex<std::collections::HashMap<(String, String), (Instant, KronosPrediction)>> =
-    std::sync::Mutex::new(std::collections::HashMap::new());
+static KRONOS_CACHE: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashMap<(String, String), (Instant, KronosPrediction)>>,
+> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
 static KRONOS_FETCHING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 fn poll_kronos_ai_prediction(symbol: &str, timeframe: &str) {
@@ -2565,9 +2516,6 @@ fn draw_kronos_ai_markers(
     let Some(kline) = latest_kline else { return; };
 
     let close_f = kline.close.to_f64();
-    let high_f = kline.high.to_f64();
-    let low_f = kline.low.to_f64();
-    let range = (high_f - low_f).max(close_f * 0.005);
 
     let Some((_, pred)) = cached else {
         return;
@@ -2697,6 +2645,57 @@ fn draw_kronos_ai_markers(
             ..canvas::Text::default()
         });
     }
+
+    // Render Risk/Reward Trade Setup Box
+    let is_bullish = pred_close_price.to_f64() >= close_f;
+    let entry_y = price_to_y(Price::from_f64(close_f));
+    let tp_y = price_to_y(pred_close_price);
+
+    let risk_offset = (close_f - pred_close_price.to_f64()).abs() * 0.5;
+    let sl_price = if is_bullish {
+        Price::from_f64(close_f - risk_offset.max(close_f * 0.003))
+    } else {
+        Price::from_f64(close_f + risk_offset.max(close_f * 0.003))
+    };
+    let sl_y = price_to_y(sl_price);
+
+    let box_left = right_edge_x - (160.0 / scaling);
+    let box_right = right_edge_x - (10.0 / scaling);
+    let box_width = box_right - box_left;
+
+    // Green Take Profit Area
+    let tp_top = entry_y.min(tp_y);
+    let tp_height = (entry_y - tp_y).abs().max(10.0 / scaling);
+    frame.fill_rectangle(
+        Point::new(box_left, tp_top),
+        Size::new(box_width, tp_height),
+        Color::from_rgb8(16, 150, 70).scale_alpha(0.25),
+    );
+
+    // Red Stop Loss Area
+    let sl_top = entry_y.min(sl_y);
+    let sl_height = (entry_y - sl_y).abs().max(10.0 / scaling);
+    frame.fill_rectangle(
+        Point::new(box_left, sl_top),
+        Size::new(box_width, sl_height),
+        Color::from_rgb8(180, 40, 40).scale_alpha(0.25),
+    );
+
+    // Calculate Risk : Reward Ratio
+    let reward = (pred_close_price.to_f64() - close_f).abs();
+    let risk = (sl_price.to_f64() - close_f).abs();
+    let rr_ratio = if risk > 0.0 { reward / risk } else { 1.5 };
+
+    let rr_label = format!("PREDICTED TRADE R:R {:.2}", rr_ratio);
+    frame.fill_text(canvas::Text {
+        content: rr_label,
+        position: Point::new(box_left + (8.0 / scaling), entry_y),
+        color: Color::WHITE,
+        size: iced::Pixels(10.0 / scaling),
+        align_y: Alignment::Center.into(),
+        font: style::AZERET_MONO,
+        ..canvas::Text::default()
+    });
 }
 
 /// Marks the key major resting bid and ask levels from the order book snapshot
