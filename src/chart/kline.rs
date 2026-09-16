@@ -1336,6 +1336,8 @@ impl canvas::Program<Message> for KlineChart {
                         chart.scaling,
                         self.visual_config.kronos_confidence_threshold,
                         self.visual_config.show_kronos_trade_box,
+                        self.latest_depth.as_ref(),
+                        chart.ticker_info.market_type(),
                     );
                 }
             }
@@ -2491,6 +2493,8 @@ fn draw_kronos_ai_markers(
     scaling: f32,
     confidence_threshold: f32,
     show_trade_box: bool,
+    latest_depth: Option<&exchange::depth::Depth>,
+    market_type: exchange::adapter::MarketKind,
 ) {
     let timeframe_str = match data_source {
         PlotData::TimeBased(ts) => ts.interval.to_string(),
@@ -2523,13 +2527,54 @@ fn draw_kronos_ai_markers(
         return;
     };
 
-    let (buy_trigger_price, sell_trigger_price, pred_close_price, buy_confidence, sell_confidence) = (
-        Price::from_f64(pred.buy_trigger),
-        Price::from_f64(pred.sell_trigger),
-        Price::from_f64(pred.predicted_close),
-        pred.buy_confidence,
-        pred.sell_confidence,
-    );
+    let size_in_quote_ccy = volume_size_unit() == SizeUnit::Quote;
+
+    // Helper to find nearest significant resting order wall in L2 depth (within 0.8% price distance)
+    let find_aligned_wall = |raw_price_f: f64, is_ask: bool| -> (Price, Option<f64>) {
+        let base_price = Price::from_f64(raw_price_f);
+        let Some(depth) = latest_depth else { return (base_price, None); };
+
+        let levels = if is_ask { &depth.asks } else { &depth.bids };
+        let mut best_match: Option<(Price, f64)> = None;
+
+        for (p, q) in levels.iter() {
+            let p_f = p.to_f64();
+            let dist_pct = (p_f - raw_price_f).abs() / raw_price_f;
+            if dist_pct <= 0.008 { // Within 0.8% of Kronos predicted target
+                let notional = market_type.qty_in_quote_value(*q, *p, size_in_quote_ccy);
+                if notional >= 100_000.0 { // Significant wall (> $100k)
+                    if best_match.map_or(true, |(_, max_n)| notional > max_n) {
+                        best_match = Some((*p, notional));
+                    }
+                }
+            }
+        }
+
+        match best_match {
+            Some((snapped_p, n)) => (snapped_p, Some(n)),
+            None => (base_price, None),
+        }
+    };
+
+    let is_bullish = pred.predicted_close >= close_f;
+
+    // Confluence Alignment: Snap Kronos targets to major order book walls
+    let (pred_close_price, pred_wall_notional) = find_aligned_wall(pred.predicted_close, is_bullish);
+    let (buy_trigger_price, buy_wall_notional) = find_aligned_wall(pred.buy_trigger, false);
+    let (sell_trigger_price, sell_wall_notional) = find_aligned_wall(pred.sell_trigger, true);
+
+    // Confluence Boost: If Kronos target aligns with a major resting wall, boost confidence rating
+    let buy_confidence = if buy_wall_notional.is_some() {
+        (pred.buy_confidence + 8.0).min(99.0)
+    } else {
+        pred.buy_confidence
+    };
+
+    let sell_confidence = if sell_wall_notional.is_some() {
+        (pred.sell_confidence + 8.0).min(99.0)
+    } else {
+        pred.sell_confidence
+    };
 
     let start_x = right_edge_x - (180.0 / scaling);
 
@@ -2552,16 +2597,27 @@ fn draw_kronos_ai_markers(
 
     let badge_width = 150.0 / scaling;
     let badge_height = 16.0 / scaling;
+
+    // Shift Kronos badge left when depth bars are present to avoid visual collision
+    let pred_badge_x = right_edge_x - badge_width - (4.0 / scaling);
+    let pred_text_x = right_edge_x - (10.0 / scaling);
+
     frame.fill_rectangle(
-        Point::new(right_edge_x - badge_width, y_pred - (badge_height / 2.0)),
+        Point::new(pred_badge_x, y_pred - badge_height - (2.0 / scaling)),
         Size::new(badge_width, badge_height),
-        pred_color.scale_alpha(0.85),
+        pred_color.scale_alpha(0.9),
     );
 
     let pred_k = pred_close_price.to_f64() / 1000.0;
+    let pred_label = if let Some(n) = pred_wall_notional {
+        format!("KRONOS PRED ${pred_k:.1}K (⚡{:.1}M)", n / 1_000_000.0)
+    } else {
+        format!("KRONOS PRED ${pred_k:.1}K")
+    };
+
     frame.fill_text(canvas::Text {
-        content: format!("KRONOS PRED ${pred_k:.1}K"),
-        position: Point::new(right_edge_x - (6.0 / scaling), y_pred),
+        content: pred_label,
+        position: Point::new(pred_text_x, y_pred - (badge_height / 2.0) - (2.0 / scaling)),
         color: Color::BLACK,
         size: iced::Pixels(10.0 / scaling),
         align_x: Alignment::End.into(),
@@ -2590,16 +2646,25 @@ fn draw_kronos_ai_markers(
 
         let badge_width = 150.0 / scaling;
         let badge_height = 16.0 / scaling;
+        let buy_badge_x = right_edge_x - badge_width - (4.0 / scaling);
+        let buy_text_x = right_edge_x - (10.0 / scaling);
+
         frame.fill_rectangle(
-            Point::new(right_edge_x - badge_width, y_buy - (badge_height / 2.0)),
+            Point::new(buy_badge_x, y_buy - badge_height - (2.0 / scaling)),
             Size::new(badge_width, badge_height),
-            buy_color.scale_alpha(0.85),
+            buy_color.scale_alpha(0.9),
         );
 
         let buy_k = buy_trigger_price.to_f64() / 1000.0;
+        let buy_label = if let Some(n) = buy_wall_notional {
+            format!("KRONOS BUY ${buy_k:.1}K [{:.0}%] ⚡{:.1}M", buy_confidence, n / 1_000_000.0)
+        } else {
+            format!("KRONOS BUY ${buy_k:.1}K [{:.0}%]", buy_confidence)
+        };
+
         frame.fill_text(canvas::Text {
-            content: format!("KRONOS BUY ${buy_k:.1}K [{:.0}%]", buy_confidence),
-            position: Point::new(right_edge_x - (6.0 / scaling), y_buy),
+            content: buy_label,
+            position: Point::new(buy_text_x, y_buy - (badge_height / 2.0) - (2.0 / scaling)),
             color: Color::BLACK,
             size: iced::Pixels(10.0 / scaling),
             align_x: Alignment::End.into(),
@@ -2629,16 +2694,25 @@ fn draw_kronos_ai_markers(
 
         let badge_width = 150.0 / scaling;
         let badge_height = 16.0 / scaling;
+        let sell_badge_x = right_edge_x - badge_width - (4.0 / scaling);
+        let sell_text_x = right_edge_x - (10.0 / scaling);
+
         frame.fill_rectangle(
-            Point::new(right_edge_x - badge_width, y_sell - (badge_height / 2.0)),
+            Point::new(sell_badge_x, y_sell - badge_height - (2.0 / scaling)),
             Size::new(badge_width, badge_height),
-            sell_color.scale_alpha(0.85),
+            sell_color.scale_alpha(0.9),
         );
 
         let sell_k = sell_trigger_price.to_f64() / 1000.0;
+        let sell_label = if let Some(n) = sell_wall_notional {
+            format!("KRONOS SELL ${sell_k:.1}K [{:.0}%] ⚡{:.1}M", sell_confidence, n / 1_000_000.0)
+        } else {
+            format!("KRONOS SELL ${sell_k:.1}K [{:.0}%]", sell_confidence)
+        };
+
         frame.fill_text(canvas::Text {
-            content: format!("KRONOS SELL ${sell_k:.1}K [{:.0}%]", sell_confidence),
-            position: Point::new(right_edge_x - (6.0 / scaling), y_sell),
+            content: sell_label,
+            position: Point::new(sell_text_x, y_sell - (badge_height / 2.0) - (2.0 / scaling)),
             color: Color::WHITE,
             size: iced::Pixels(10.0 / scaling),
             align_x: Alignment::End.into(),
@@ -2652,13 +2726,18 @@ fn draw_kronos_ai_markers(
     if show_trade_box {
         let is_bullish = pred_close_price.to_f64() >= close_f;
         let entry_y = price_to_y(Price::from_f64(close_f));
-        let tp_y = price_to_y(pred_close_price);
+        let tp_target_price = if is_bullish {
+            Price::from_f64(sell_trigger_price.to_f64().max(pred_close_price.to_f64()))
+        } else {
+            Price::from_f64(buy_trigger_price.to_f64().min(pred_close_price.to_f64()))
+        };
+        let tp_y = price_to_y(tp_target_price);
 
         // Dynamically compute Stop Loss based on forecast triggers / swing boundary
         let sl_price = if is_bullish {
-            Price::from_f64(sell_trigger_price.to_f64().min(close_f * 0.992))
+            Price::from_f64(close_f * 0.992)
         } else {
-            Price::from_f64(buy_trigger_price.to_f64().max(close_f * 1.008))
+            Price::from_f64(close_f * 1.008)
         };
         let sl_y = price_to_y(sl_price);
 
@@ -2666,7 +2745,7 @@ fn draw_kronos_ai_markers(
         let box_right = right_edge_x - (10.0 / scaling);
         let box_width = box_right - box_left;
 
-        // Green Take Profit Area
+        // Green Take Profit Area (Above entry when bullish LONG, below entry when bearish SHORT)
         let tp_top = entry_y.min(tp_y);
         let tp_height = (entry_y - tp_y).abs().max(10.0 / scaling);
         frame.fill_rectangle(
@@ -2685,7 +2764,7 @@ fn draw_kronos_ai_markers(
         );
 
         // Calculate Risk : Reward Ratio
-        let reward = (pred_close_price.to_f64() - close_f).abs();
+        let reward = (tp_target_price.to_f64() - close_f).abs();
         let risk = (sl_price.to_f64() - close_f).abs();
         let rr_ratio = if risk > 0.0 { reward / risk } else { 1.5 };
 

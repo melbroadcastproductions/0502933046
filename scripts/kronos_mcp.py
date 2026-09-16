@@ -129,17 +129,17 @@ def get_trading_signal(symbol: str = "BTC/USDT", timeframe: str = "1h", pred_len
         calculated_conf = min(95.0, round(50.0 + ratio * 70.0, 1))
 
         if is_bullish:
-            buy_trigger = pred_low   # Buy Dip Support Level
-            sell_trigger = pred_high  # Take Profit Target Level
-            buy_conf = calculated_conf
-            sell_conf = round(100.0 - calculated_conf, 1)
-            primary_trigger = buy_trigger
+            # Bullish setup (LONG): Buy Entry at current price, Target TP at pred_high
+            buy_trigger = last_close
+            sell_trigger = pred_high
+            overall_conf = calculated_conf
+            primary_trigger = pred_close
         else:
-            buy_trigger = pred_low   # Target Support Level
-            sell_trigger = pred_high  # Sell Rally Resistance Level
-            sell_conf = calculated_conf
-            buy_conf = round(100.0 - calculated_conf, 1)
-            primary_trigger = sell_trigger
+            # Bearish setup (SHORT): Sell Entry at current price, Target TP at pred_low
+            sell_trigger = last_close
+            buy_trigger = pred_low
+            overall_conf = calculated_conf
+            primary_trigger = pred_close
 
         signal = {
             "symbol": symbol,
@@ -150,9 +150,9 @@ def get_trading_signal(symbol: str = "BTC/USDT", timeframe: str = "1h", pred_len
             "buy_trigger": buy_trigger,
             "sell_trigger": sell_trigger,
             "predicted_close": pred_close,
-            "buy_confidence": buy_conf,
-            "sell_confidence": sell_conf,
-            "summary": f"Kronos Primary Signal: {primary_action} ({symbol} {timeframe}) | Trigger: ${primary_trigger:.2f} | Target Close: ${pred_close:.2f} | Current: ${last_close:.2f}"
+            "buy_confidence": overall_conf,
+            "sell_confidence": overall_conf,
+            "summary": f"Kronos Primary Signal: {primary_action} ({symbol} {timeframe}) | Entry: ${last_close:.2f} | Target Close: ${pred_close:.2f}"
         }
         return json.dumps(signal, indent=2)
     except Exception as e:

@@ -190,15 +190,15 @@ class KronosRequestHandler(BaseHTTPRequestHandler):
             calculated_conf = min(95.0, round(50.0 + ratio * 70.0, 1))
 
             if is_bullish:
-                buy_trigger = pred_low  # Buy Dip Support Level
-                sell_trigger = pred_high # Take Profit Target Level
-                buy_conf = calculated_conf
-                sell_conf = round(100.0 - calculated_conf, 1)
+                # Bullish setup (LONG): Buy Entry at current/dip, Target TP at pred_high
+                buy_trigger = last_close
+                sell_trigger = pred_high
+                overall_conf = calculated_conf
             else:
-                buy_trigger = pred_low  # Target Support Level
-                sell_trigger = pred_high # Sell Rally Resistance Level
-                sell_conf = calculated_conf
-                buy_conf = round(100.0 - calculated_conf, 1)
+                # Bearish setup (SHORT): Sell Entry at current/rally, Target TP at pred_low
+                sell_trigger = last_close
+                buy_trigger = pred_low
+                overall_conf = calculated_conf
 
             response = {
                 "status": "ok",
@@ -207,8 +207,8 @@ class KronosRequestHandler(BaseHTTPRequestHandler):
                 "buy_trigger": buy_trigger,
                 "sell_trigger": sell_trigger,
                 "predicted_close": pred_close,
-                "buy_confidence": buy_conf,
-                "sell_confidence": sell_conf,
+                "buy_confidence": overall_conf,
+                "sell_confidence": overall_conf,
             }
 
             self.send_response(200)
