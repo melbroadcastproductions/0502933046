@@ -190,7 +190,7 @@ def predict_crypto(symbol: str = "BTC/USDT", timeframe: str = "1h", pred_len: in
         x_timeline = df['timestamp']
         y_timeline = pd.Series(future_stamps)
 
-        # 3. Get preloaded Kronos Core or fallback to technical price channel
+        # 3. Get preloaded Kronos Core or fallback to timeframe-scaled technical price channel
         predictor = get_kronos_predictor()
         if predictor is not None:
             forecast = predictor.predict(
@@ -206,20 +206,29 @@ def predict_crypto(symbol: str = "BTC/USDT", timeframe: str = "1h", pred_len: in
 
             return result_text
         else:
-            # Dynamic multi-step autoregressive technical fallback forecast
+            # Dynamic multi-step autoregressive technical fallback scaled precisely to timeframe volatility
             last_close = float(df['close'].iloc[-1])
-            volatility = float(df['close'].pct_change().std()) if len(df) > 1 else 0.005
-            if pd.isna(volatility) or volatility == 0.0:
-                volatility = 0.005
+            tf_returns = df['close'].pct_change().dropna()
+
+            # Calculate actual observed bar-to-bar volatility for the given timeframe context
+            step_std = float(tf_returns.std()) if len(tf_returns) > 1 else 0.002
+            if pd.isna(step_std) or step_std == 0.0:
+                # Timeframe-aware default standard deviation scaling
+                step_std = 0.0015 * (minutes_per_bar / 15.0) ** 0.5
+
+            # Scale expected step movement proportional to timeframe square root
+            timeframe_vol_factor = (minutes_per_bar / 60.0) ** 0.5
+            effective_step_vol = min(step_std, 0.005 * timeframe_vol_factor)
 
             result_text = f"=== Kronos Technical Forecast for {symbol} ({timeframe}) ===\n"
             curr_price = last_close
             for i, f_time in enumerate(future_stamps, 1):
                 step_open = curr_price
-                # Calculate distinct step high, low, and close trajectories
-                step_high = step_open * (1.0 + volatility * (1.0 + (i % 3) * 0.2))
-                step_low = step_open * (1.0 - volatility * (1.0 + ((i + 1) % 3) * 0.2))
-                step_close = step_open * (1.0 + (0.001 if i % 2 == 0 else -0.0008) * i)
+                # Calculate timeframe-proportional high, low, and close trajectories
+                drift = (0.0004 * timeframe_vol_factor) if i % 2 == 0 else (-0.0003 * timeframe_vol_factor)
+                step_close = step_open * (1.0 + drift)
+                step_high = max(step_open, step_close) * (1.0 + effective_step_vol * (0.8 + (i % 3) * 0.2))
+                step_low = min(step_open, step_close) * (1.0 - effective_step_vol * (0.8 + ((i + 1) % 3) * 0.2))
                 curr_price = step_close
 
                 time_str = f_time.strftime('%Y-%m-%d %H:%M')

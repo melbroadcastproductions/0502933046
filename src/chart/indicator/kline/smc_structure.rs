@@ -584,6 +584,25 @@ pub fn draw_zones(
 ) {
     let Some(zones) = state.zones else { return };
 
+    let y_prem = price_to_y(zones.premium);
+    let y_eq = price_to_y(zones.equilibrium);
+    let y_disc = price_to_y(zones.discount);
+
+    // Premium Zone Shading (Upper region above Premium line)
+    let prem_top = y_prem.min(y_eq - 100.0);
+    let prem_h = (y_eq - y_prem).abs();
+    if prem_h > 0.0 {
+        let rect = Path::rectangle(Point::new(left_x, prem_top), Size::new((right_x - left_x).max(1.0), prem_h));
+        frame.fill(&rect, Color::from_rgb8(140, 50, 200).scale_alpha(0.04));
+    }
+
+    // Discount Zone Shading (Lower region below Discount line)
+    let disc_h = (y_disc - y_eq).abs();
+    if disc_h > 0.0 {
+        let rect = Path::rectangle(Point::new(left_x, y_eq), Size::new((right_x - left_x).max(1.0), disc_h));
+        frame.fill(&rect, Color::from_rgb8(50, 140, 200).scale_alpha(0.04));
+    }
+
     let rows = [
         ("Premium", zones.premium),
         ("Eq", zones.equilibrium),
@@ -596,12 +615,12 @@ pub fn draw_zones(
         frame.stroke(
             &line,
             Stroke::default()
-                .with_color(label_color.scale_alpha(0.5))
+                .with_color(label_color.scale_alpha(0.4))
                 .with_width(1.0),
         );
         frame.fill_text(Text {
             content: label.to_string(),
-            position: Point::new(left_x, y - 12.0),
+            position: Point::new(left_x + 10.0, y - 12.0),
             color: label_color,
             size: iced::Pixels(10.0),
             ..Text::default()
