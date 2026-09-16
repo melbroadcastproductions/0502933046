@@ -7,14 +7,12 @@ import pandas as pd
 import ccxt
 from datetime import datetime, timedelta
 
-# Ensure script directory, parent directory, and current working directory are in sys.path
 script_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(script_dir)
 for path in [script_dir, parent_dir, os.getcwd()]:
     if path not in sys.path:
         sys.path.insert(0, path)
 
-# Try importing predict_crypto from kronos_mcp.py
 PREDICT_CRYPTO_AVAILABLE = False
 try:
     from scripts.kronos_mcp import predict_crypto
@@ -34,11 +32,12 @@ class KronosRequestHandler(BaseHTTPRequestHandler):
             pass
 
     def log_message(self, format, *args):
-        client_ip = self.client_address[0]
-        log_entry = f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Connection/Request from {client_ip} - {format % args}
-"
-        print(log_entry.strip())
         try:
+            client_ip = self.client_address[0]
+            msg = format % args
+            now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            log_entry = f"[{now_str}] Connection/Request from {client_ip} - {msg}\n"
+            print(log_entry.strip())
             with open('kronos_bridge.log', 'a') as log_f:
                 log_f.write(log_entry)
         except Exception:
@@ -51,7 +50,6 @@ class KronosRequestHandler(BaseHTTPRequestHandler):
         try:
             req_data = json.loads(body) if body else {}
 
-            # Handle JSON-RPC 2.0 requests from MCP clients (Claude Desktop / mcp-remote)
             if "jsonrpc" in req_data or self.path.startswith('/messages'):
                 msg_id = req_data.get('id', 0)
                 method = req_data.get('method', '')
@@ -136,15 +134,12 @@ class KronosRequestHandler(BaseHTTPRequestHandler):
                     pass
                 return
 
-            # Handle REST prediction requests from Flowsurface Candlestick chart
             raw_symbol = req_data.get('symbol', 'BTCUSDT')
 
-            # Strip exchange suffixes e.g. "ETHUSDT.P", "ETHUSDT_PERP", "ETH/USDT:USDT"
             clean_sym = raw_symbol.upper().replace('.P', '').replace('_PERP', '').replace(' PERP', '')
             if ':' in clean_sym:
                 clean_sym = clean_sym.split(':')[0]
 
-            # Format symbol for CCXT e.g. "ETH/USDT"
             if '/' not in clean_sym:
                 if clean_sym.endswith('USDT'):
                     base = clean_sym[:-4]
@@ -171,7 +166,6 @@ class KronosRequestHandler(BaseHTTPRequestHandler):
             if PREDICT_CRYPTO_AVAILABLE:
                 forecast_text = predict_crypto(symbol=symbol, timeframe=timeframe, pred_len=pred_len, end_time=end_time, context_bars=context_bars)
 
-                # Parse high, low, close from text output if successful
                 highs = [float(h) for h in re.findall(r'High:\s*([\d\.]+)', forecast_text)]
                 lows = [float(l) for l in re.findall(r'Low:\s*([\d\.]+)', forecast_text)]
                 closes = [float(c) for c in re.findall(r'Close:\s*([\d\.]+)', forecast_text)]
@@ -184,7 +178,6 @@ class KronosRequestHandler(BaseHTTPRequestHandler):
                         last_close = closes[0]
 
             if 'pred_high' not in locals() or pred_high <= 0.0:
-                # Dynamic symbol-proportional fallback if predictions fail
                 if last_close > 0.0:
                     range_f = last_close * 0.02
                 else:
@@ -195,7 +188,6 @@ class KronosRequestHandler(BaseHTTPRequestHandler):
                 pred_low = last_close - range_f * 0.5
                 pred_close = last_close + range_f * 0.1
 
-            # Dynamic directional signal & confidence derivation from raw Kronos forecast
             is_bullish = pred_close >= last_close
             trend_mag = abs(pred_close - last_close)
             vol_range = max(pred_high - pred_low, 1e-5)
@@ -203,12 +195,10 @@ class KronosRequestHandler(BaseHTTPRequestHandler):
             calculated_conf = min(95.0, round(50.0 + ratio * 70.0, 1))
 
             if is_bullish:
-                # Bullish setup (LONG): Buy Trigger at support/dip level (pred_low), Target TP at pred_high
                 buy_trigger = pred_low
                 sell_trigger = pred_high
                 overall_conf = calculated_conf
             else:
-                # Bearish setup (SHORT): Sell Trigger at resistance/rally level (pred_high), Target TP at pred_low
                 sell_trigger = pred_high
                 buy_trigger = pred_low
                 overall_conf = calculated_conf
@@ -249,7 +239,7 @@ class KronosRequestHandler(BaseHTTPRequestHandler):
             self.send_header('Connection', 'keep-alive')
             self.end_headers()
             try:
-                msg = f"event: endpoint\r\ndata: /messages?session_id=1\r\n\r\n"
+                msg = "event: endpoint\r\ndata: /messages?session_id=1\r\n\r\n"
                 self.wfile.write(msg.encode('utf-8'))
             except (ConnectionAbortedError, BrokenPipeError, ConnectionResetError, OSError):
                 pass

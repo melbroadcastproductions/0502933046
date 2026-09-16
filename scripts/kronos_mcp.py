@@ -11,10 +11,10 @@ for path in [script_dir, parent_dir, os.getcwd()]:
     if path not in sys.path:
         sys.path.insert(0, path)
 # FIX: Using the brand new v2 server module layout
-from mcp.server.mcpserver import MCPServer, Context
+from mcp.server.fastmcp import FastMCP
 
 # Initialize the new v2 server object
-mcp = MCPServer("Kronos Financial Predictor")
+mcp = FastMCP("Kronos Financial Predictor")
 
 # Global lazy/preloaded model cache to avoid per-request model loading overhead
 GLOBAL_PREDICTOR = None
