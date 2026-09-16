@@ -2491,7 +2491,7 @@ fn draw_kronos_ai_markers(
     _palette: &Extended,
     right_edge_x: f32,
     scaling: f32,
-    confidence_threshold: f32,
+    _confidence_threshold: f32,
     show_trade_box: bool,
     latest_depth: Option<&exchange::depth::Depth>,
     market_type: exchange::adapter::MarketKind,
@@ -2626,101 +2626,97 @@ fn draw_kronos_ai_markers(
         ..canvas::Text::default()
     });
 
-    if buy_confidence >= confidence_threshold {
-        let y_buy = price_to_y(buy_trigger_price);
-        let buy_color = Color::from_rgb8(0, 200, 200); // Cyan/Teal accent for Kronos Buy Trigger
+    // Always render active BUY and SELL trigger targets when Kronos AI is enabled,
+    // using the confidence rating as visual indicator text rather than filtering out.
+    let y_buy = price_to_y(buy_trigger_price);
+    let buy_color = Color::from_rgb8(0, 200, 200); // Cyan/Teal accent for Kronos Buy Trigger
 
-        let dashed = Path::line(Point::new(start_x, y_buy), Point::new(right_edge_x, y_buy));
-        frame.stroke(
-            &dashed,
-            Stroke {
-                line_dash: LineDash {
-                    segments: &[6.0 / scaling, 4.0 / scaling],
-                    offset: 0,
-                },
-                ..Stroke::default()
-                    .with_color(buy_color.scale_alpha(0.85))
-                    .with_width(1.5 / scaling)
+    let dashed_buy = Path::line(Point::new(start_x, y_buy), Point::new(right_edge_x, y_buy));
+    frame.stroke(
+        &dashed_buy,
+        Stroke {
+            line_dash: LineDash {
+                segments: &[6.0 / scaling, 4.0 / scaling],
+                offset: 0,
             },
-        );
+            ..Stroke::default()
+                .with_color(buy_color.scale_alpha(0.85))
+                .with_width(1.5 / scaling)
+        },
+    );
 
-        let badge_width = 150.0 / scaling;
-        let badge_height = 16.0 / scaling;
-        let buy_badge_x = right_edge_x - badge_width - (4.0 / scaling);
-        let buy_text_x = right_edge_x - (10.0 / scaling);
+    let badge_width = 150.0 / scaling;
+    let badge_height = 16.0 / scaling;
+    let buy_badge_x = right_edge_x - badge_width - (4.0 / scaling);
+    let buy_text_x = right_edge_x - (10.0 / scaling);
 
-        frame.fill_rectangle(
-            Point::new(buy_badge_x, y_buy - badge_height - (2.0 / scaling)),
-            Size::new(badge_width, badge_height),
-            buy_color.scale_alpha(0.9),
-        );
+    frame.fill_rectangle(
+        Point::new(buy_badge_x, y_buy - badge_height - (2.0 / scaling)),
+        Size::new(badge_width, badge_height),
+        buy_color.scale_alpha(0.9),
+    );
 
-        let buy_k = buy_trigger_price.to_f64() / 1000.0;
-        let buy_label = if let Some(n) = buy_wall_notional {
-            format!("KRONOS BUY ${buy_k:.1}K [{:.0}%] ⚡{:.1}M", buy_confidence, n / 1_000_000.0)
-        } else {
-            format!("KRONOS BUY ${buy_k:.1}K [{:.0}%]", buy_confidence)
-        };
+    let buy_k = buy_trigger_price.to_f64() / 1000.0;
+    let buy_label = if let Some(n) = buy_wall_notional {
+        format!("KRONOS BUY ${buy_k:.1}K [{:.0}%] ⚡{:.1}M", buy_confidence, n / 1_000_000.0)
+    } else {
+        format!("KRONOS BUY ${buy_k:.1}K [{:.0}%]", buy_confidence)
+    };
 
-        frame.fill_text(canvas::Text {
-            content: buy_label,
-            position: Point::new(buy_text_x, y_buy - (badge_height / 2.0) - (2.0 / scaling)),
-            color: Color::BLACK,
-            size: iced::Pixels(10.0 / scaling),
-            align_x: Alignment::End.into(),
-            align_y: Alignment::Center.into(),
-            font: style::AZERET_MONO,
-            ..canvas::Text::default()
-        });
-    }
+    frame.fill_text(canvas::Text {
+        content: buy_label,
+        position: Point::new(buy_text_x, y_buy - (badge_height / 2.0) - (2.0 / scaling)),
+        color: Color::BLACK,
+        size: iced::Pixels(10.0 / scaling),
+        align_x: Alignment::End.into(),
+        align_y: Alignment::Center.into(),
+        font: style::AZERET_MONO,
+        ..canvas::Text::default()
+    });
 
-    if sell_confidence >= confidence_threshold {
-        let y_sell = price_to_y(sell_trigger_price);
-        let sell_color = Color::from_rgb8(210, 80, 180); // Magenta/Purple accent for Kronos Sell Trigger
+    let y_sell = price_to_y(sell_trigger_price);
+    let sell_color = Color::from_rgb8(210, 80, 180); // Magenta/Purple accent for Kronos Sell Trigger
 
-        let dashed = Path::line(Point::new(start_x, y_sell), Point::new(right_edge_x, y_sell));
-        frame.stroke(
-            &dashed,
-            Stroke {
-                line_dash: LineDash {
-                    segments: &[6.0 / scaling, 4.0 / scaling],
-                    offset: 0,
-                },
-                ..Stroke::default()
-                    .with_color(sell_color.scale_alpha(0.85))
-                    .with_width(1.5 / scaling)
+    let dashed_sell = Path::line(Point::new(start_x, y_sell), Point::new(right_edge_x, y_sell));
+    frame.stroke(
+        &dashed_sell,
+        Stroke {
+            line_dash: LineDash {
+                segments: &[6.0 / scaling, 4.0 / scaling],
+                offset: 0,
             },
-        );
+            ..Stroke::default()
+                .with_color(sell_color.scale_alpha(0.85))
+                .with_width(1.5 / scaling)
+        },
+    );
 
-        let badge_width = 150.0 / scaling;
-        let badge_height = 16.0 / scaling;
-        let sell_badge_x = right_edge_x - badge_width - (4.0 / scaling);
-        let sell_text_x = right_edge_x - (10.0 / scaling);
+    let sell_badge_x = right_edge_x - badge_width - (4.0 / scaling);
+    let sell_text_x = right_edge_x - (10.0 / scaling);
 
-        frame.fill_rectangle(
-            Point::new(sell_badge_x, y_sell - badge_height - (2.0 / scaling)),
-            Size::new(badge_width, badge_height),
-            sell_color.scale_alpha(0.9),
-        );
+    frame.fill_rectangle(
+        Point::new(sell_badge_x, y_sell - badge_height - (2.0 / scaling)),
+        Size::new(badge_width, badge_height),
+        sell_color.scale_alpha(0.9),
+    );
 
-        let sell_k = sell_trigger_price.to_f64() / 1000.0;
-        let sell_label = if let Some(n) = sell_wall_notional {
-            format!("KRONOS SELL ${sell_k:.1}K [{:.0}%] ⚡{:.1}M", sell_confidence, n / 1_000_000.0)
-        } else {
-            format!("KRONOS SELL ${sell_k:.1}K [{:.0}%]", sell_confidence)
-        };
+    let sell_k = sell_trigger_price.to_f64() / 1000.0;
+    let sell_label = if let Some(n) = sell_wall_notional {
+        format!("KRONOS SELL ${sell_k:.1}K [{:.0}%] ⚡{:.1}M", sell_confidence, n / 1_000_000.0)
+    } else {
+        format!("KRONOS SELL ${sell_k:.1}K [{:.0}%]", sell_confidence)
+    };
 
-        frame.fill_text(canvas::Text {
-            content: sell_label,
-            position: Point::new(sell_text_x, y_sell - (badge_height / 2.0) - (2.0 / scaling)),
-            color: Color::WHITE,
-            size: iced::Pixels(10.0 / scaling),
-            align_x: Alignment::End.into(),
-            align_y: Alignment::Center.into(),
-            font: style::AZERET_MONO,
-            ..canvas::Text::default()
-        });
-    }
+    frame.fill_text(canvas::Text {
+        content: sell_label,
+        position: Point::new(sell_text_x, y_sell - (badge_height / 2.0) - (2.0 / scaling)),
+        color: Color::WHITE,
+        size: iced::Pixels(10.0 / scaling),
+        align_x: Alignment::End.into(),
+        align_y: Alignment::Center.into(),
+        font: style::AZERET_MONO,
+        ..canvas::Text::default()
+    });
 
     // Render Risk/Reward Trade Setup Box when enabled
     if show_trade_box {
