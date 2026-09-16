@@ -82,6 +82,11 @@ def get_trading_signal(symbol: str = "BTC/USDT", timeframe: str = "1h", pred_len
     """
     Runs Kronos model forecast analysis and returns key trading signals including
     buy trigger level, sell trigger level, target close price, and prediction confidence percentages.
+
+    Args:
+        symbol: Trading pair e.g. "BTC/USDT", "ETH/USDT", "SOL/USDT"
+        timeframe: Candle interval e.g. "15m", "1h", "4h"
+        pred_len: Number of future forecast candles to generate (e.g. 12, 24, 48, 100)
     """
     try:
         exchange = ccxt.binance({'enableRateLimit': True})
@@ -117,7 +122,24 @@ def get_trading_signal(symbol: str = "BTC/USDT", timeframe: str = "1h", pred_len
 
         is_bullish = pred_close >= last_close
         primary_action = "BUY" if is_bullish else "SELL"
-        primary_trigger = pred_high if is_bullish else pred_low
+
+        trend_mag = abs(pred_close - last_close)
+        vol_range = max(pred_high - pred_low, 1e-5)
+        ratio = trend_mag / vol_range
+        calculated_conf = min(95.0, round(50.0 + ratio * 70.0, 1))
+
+        if is_bullish:
+            buy_trigger = pred_low   # Buy Dip Support Level
+            sell_trigger = pred_high  # Take Profit Target Level
+            buy_conf = calculated_conf
+            sell_conf = round(100.0 - calculated_conf, 1)
+            primary_trigger = buy_trigger
+        else:
+            buy_trigger = pred_low   # Target Support Level
+            sell_trigger = pred_high  # Sell Rally Resistance Level
+            sell_conf = calculated_conf
+            buy_conf = round(100.0 - calculated_conf, 1)
+            primary_trigger = sell_trigger
 
         signal = {
             "symbol": symbol,
@@ -125,11 +147,11 @@ def get_trading_signal(symbol: str = "BTC/USDT", timeframe: str = "1h", pred_len
             "current_price": last_close,
             "primary_signal": primary_action,
             "primary_trigger": primary_trigger,
-            "buy_trigger": pred_high,
-            "sell_trigger": pred_low,
+            "buy_trigger": buy_trigger,
+            "sell_trigger": sell_trigger,
             "predicted_close": pred_close,
-            "buy_confidence": 88.0 if is_bullish else 45.0,
-            "sell_confidence": 85.0 if not is_bullish else 40.0,
+            "buy_confidence": buy_conf,
+            "sell_confidence": sell_conf,
             "summary": f"Kronos Primary Signal: {primary_action} ({symbol} {timeframe}) | Trigger: ${primary_trigger:.2f} | Target Close: ${pred_close:.2f} | Current: ${last_close:.2f}"
         }
         return json.dumps(signal, indent=2)
@@ -140,7 +162,12 @@ def get_trading_signal(symbol: str = "BTC/USDT", timeframe: str = "1h", pred_len
 def predict_crypto(symbol: str = "BTC/USDT", timeframe: str = "1h", pred_len: int = 24) -> str:
     """
     Fetches live market data from Binance and runs the local Kronos Time Series model
-    to generate future Max, Min, and Close price predictions.
+    to generate future Max, Min, and Close price predictions over a customizable candle length (pred_len).
+
+    Args:
+        symbol: Trading pair e.g. "BTC/USDT", "ETH/USDT", "SOL/USDT"
+        timeframe: Candle interval e.g. "15m", "1h", "4h"
+        pred_len: Number of future forecast candles to generate (e.g. 12, 24, 48, 100)
     """
     try:
         # 1. Fetch live data from Binance for specified timeframe
