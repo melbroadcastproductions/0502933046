@@ -137,24 +137,23 @@ def predict_crypto(symbol: str = "BTC/USDT", timeframe: str = "1h", pred_len: in
     to generate future Max, Min, and Close price predictions.
     """
     try:
-        # 1. Fetch live data from Binance
+        # 1. Fetch live data from Binance for specified timeframe
         exchange = ccxt.binance({'enableRateLimit': True})
-        ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=100)
+        ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=200)
 
         columns = ['timestamp', 'open', 'high', 'low', 'close', 'volume']
         live_df = pd.DataFrame(ohlcv, columns=columns)
 
-        # 2. Align timestamps to local clock with support for all timeframes
-        now_time = datetime.now().replace(second=0, microsecond=0)
+        # 2. Align timestamps to actual timeframe frequency
         freq_map = {"1m": 1, "3m": 3, "4m": 4, "5m": 5, "15m": 15, "30m": 30, "1h": 60, "2h": 120, "4h": 240, "1d": 1440}
         minutes_per_bar = freq_map.get(timeframe.lower(), 60)
 
-        history_times = [now_time - timedelta(minutes=i * minutes_per_bar) for i in range(len(live_df))]
-        history_times.reverse()
-        live_df['timestamp'] = history_times
-        df = live_df.tail(50).copy()
+        # Convert epoch milliseconds directly into datetime objects matching timeframe resolution
+        live_df['timestamp'] = pd.to_datetime(live_df['timestamp'], unit='ms')
+        df = live_df.tail(100).copy().reset_index(drop=True)
 
-        future_stamps = [now_time + timedelta(minutes=i * minutes_per_bar) for i in range(1, pred_len + 1)]
+        last_time = df['timestamp'].iloc[-1]
+        future_stamps = [last_time + timedelta(minutes=i * minutes_per_bar) for i in range(1, pred_len + 1)]
         x_timeline = df['timestamp']
         y_timeline = pd.Series(future_stamps)
 
