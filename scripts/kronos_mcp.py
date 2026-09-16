@@ -115,16 +115,22 @@ def get_trading_signal(symbol: str = "BTC/USDT", timeframe: str = "1h", pred_len
             pred_low = last_close - range_f * 0.5
             pred_close = last_close + range_f * 0.1
 
+        is_bullish = pred_close >= last_close
+        primary_action = "BUY" if is_bullish else "SELL"
+        primary_trigger = pred_high if is_bullish else pred_low
+
         signal = {
             "symbol": symbol,
             "timeframe": timeframe,
             "current_price": last_close,
+            "primary_signal": primary_action,
+            "primary_trigger": primary_trigger,
             "buy_trigger": pred_high,
             "sell_trigger": pred_low,
             "predicted_close": pred_close,
-            "buy_confidence": 88.0,
-            "sell_confidence": 82.0,
-            "summary": f"Kronos Signal for {symbol} ({timeframe}): Buy Trigger: ${pred_high:.2f} | Sell Trigger: ${pred_low:.2f} | Target Close: ${pred_close:.2f}"
+            "buy_confidence": 88.0 if is_bullish else 45.0,
+            "sell_confidence": 85.0 if not is_bullish else 40.0,
+            "summary": f"Kronos Primary Signal: {primary_action} ({symbol} {timeframe}) | Trigger: ${primary_trigger:.2f} | Target Close: ${pred_close:.2f} | Current: ${last_close:.2f}"
         }
         return json.dumps(signal, indent=2)
     except Exception as e:
