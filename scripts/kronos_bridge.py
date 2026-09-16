@@ -72,13 +72,15 @@ class KronosRequestHandler(BaseHTTPRequestHandler):
                             "tools": [
                                 {
                                     "name": "predict_crypto",
-                                    "description": "Fetches live market data and runs the local Kronos Time Series model to generate future price predictions.",
+                                    "description": "Runs local Kronos Time Series model to generate future price predictions over a customizable candle length (pred_len). Supports backtesting via end_time or context_bars.",
                                     "inputSchema": {
                                         "type": "object",
                                         "properties": {
                                             "symbol": {"type": "string", "default": "BTC/USDT"},
                                             "timeframe": {"type": "string", "default": "15m"},
-                                            "pred_len": {"type": "integer", "default": 24}
+                                            "pred_len": {"type": "integer", "default": 24},
+                                            "end_time": {"type": "string", "default": ""},
+                                            "context_bars": {"type": "string", "default": ""}
                                         }
                                     }
                                 }
@@ -91,9 +93,11 @@ class KronosRequestHandler(BaseHTTPRequestHandler):
                     symbol = args.get('symbol', 'BTC/USDT')
                     timeframe = args.get('timeframe', '15m')
                     pred_len = args.get('pred_len', 24)
+                    end_time = args.get('end_time', '')
+                    context_bars = args.get('context_bars', '')
 
                     if PREDICT_CRYPTO_AVAILABLE:
-                        text_res = predict_crypto(symbol=symbol, timeframe=timeframe, pred_len=pred_len)
+                        text_res = predict_crypto(symbol=symbol, timeframe=timeframe, pred_len=pred_len, end_time=end_time, context_bars=context_bars)
                     else:
                         text_res = f"Kronos prediction for {symbol} ({timeframe}): High: 82500.0, Low: 78000.0, Close: 80000.0"
 
@@ -145,6 +149,8 @@ class KronosRequestHandler(BaseHTTPRequestHandler):
 
             timeframe = req_data.get('timeframe', '15m')
             pred_len = req_data.get('pred_len', 24)
+            end_time = req_data.get('end_time', '')
+            context_bars = req_data.get('context_bars', '')
 
             last_close = 0.0
             try:
@@ -156,7 +162,7 @@ class KronosRequestHandler(BaseHTTPRequestHandler):
                 pass
 
             if PREDICT_CRYPTO_AVAILABLE:
-                forecast_text = predict_crypto(symbol=symbol, timeframe=timeframe, pred_len=pred_len)
+                forecast_text = predict_crypto(symbol=symbol, timeframe=timeframe, pred_len=pred_len, end_time=end_time, context_bars=context_bars)
 
                 # Parse high, low, close from text output if successful
                 highs = [float(h) for h in re.findall(r'High:\s*([\d\.]+)', forecast_text)]

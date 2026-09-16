@@ -78,20 +78,48 @@ except Exception:
     pass
 
 @mcp.tool()
-def get_trading_signal(symbol: str = "BTC/USDT", timeframe: str = "1h", pred_len: int = 24) -> str:
+def get_trading_signal(
+    symbol: str = "BTC/USDT",
+    timeframe: str = "1h",
+    pred_len: int = 24,
+    end_time: str = "",
+    context_bars: str = ""
+) -> str:
     """
     Runs Kronos model forecast analysis and returns key trading signals including
     buy trigger level, sell trigger level, target close price, and prediction confidence percentages.
+    Supports historical backtesting when end_time or context_bars are provided.
 
     Args:
         symbol: Trading pair e.g. "BTC/USDT", "ETH/USDT", "SOL/USDT"
         timeframe: Candle interval e.g. "15m", "1h", "4h"
         pred_len: Number of future forecast candles to generate (e.g. 12, 24, 48, 100)
+        end_time: Optional historical cutoff timestamp e.g. "2025-02-14 12:00" or ISO/epoch ms
+        context_bars: Optional JSON string of OHLCV bars array e.g. '[{"timestamp":..., "open":...}]'
     """
     try:
-        exchange = ccxt.binance({'enableRateLimit': True})
-        ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=100)
-        df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        freq_map = {"1m": 1, "3m": 3, "4m": 4, "5m": 5, "15m": 15, "30m": 30, "1h": 60, "2h": 120, "4h": 240, "1d": 1440}
+        minutes_per_bar = freq_map.get(timeframe.lower(), 60)
+
+        if context_bars and context_bars.strip().startswith('['):
+            import json as py_json
+            parsed_bars = py_json.loads(context_bars)
+            df = pd.DataFrame(parsed_bars)
+        else:
+            exchange = ccxt.binance({'enableRateLimit': True})
+            if end_time:
+                try:
+                    since_ms = int(end_time)
+                except ValueError:
+                    since_dt = pd.to_datetime(end_time)
+                    since_ms = int(since_dt.timestamp() * 1000)
+                cutoff_ms = since_ms
+                fetch_since = cutoff_ms - (100 * minutes_per_bar * 60 * 1000)
+                ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, since=fetch_since, limit=100)
+            else:
+                ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=100)
+            df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+
         last_close = float(df['close'].iloc[-1])
         range_f = float(df['high'].max() - df['low'].min())
 
@@ -159,30 +187,53 @@ def get_trading_signal(symbol: str = "BTC/USDT", timeframe: str = "1h", pred_len
         return f"Error computing Kronos trading signal: {str(e)}"
 
 @mcp.tool()
-def predict_crypto(symbol: str = "BTC/USDT", timeframe: str = "1h", pred_len: int = 24) -> str:
+def predict_crypto(
+    symbol: str = "BTC/USDT",
+    timeframe: str = "1h",
+    pred_len: int = 24,
+    end_time: str = "",
+    context_bars: str = ""
+) -> str:
     """
-    Fetches live market data from Binance and runs the local Kronos Time Series model
-    to generate future Max, Min, and Close price predictions over a customizable candle length (pred_len).
+    Runs local Kronos Time Series model to generate future price predictions over a customizable candle length (pred_len).
+    Supports backtesting when end_time or context_bars are provided, enabling historical window evaluation.
 
     Args:
         symbol: Trading pair e.g. "BTC/USDT", "ETH/USDT", "SOL/USDT"
         timeframe: Candle interval e.g. "15m", "1h", "4h"
         pred_len: Number of future forecast candles to generate (e.g. 12, 24, 48, 100)
+        end_time: Optional historical cutoff timestamp e.g. "2025-02-14 12:00" or ISO/epoch ms
+        context_bars: Optional JSON string of historical OHLCV bars array e.g. '[{"timestamp":..., "open":...}]'
     """
     try:
-        # 1. Fetch live data from Binance for specified timeframe
-        exchange = ccxt.binance({'enableRateLimit': True})
-        ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=200)
-
-        columns = ['timestamp', 'open', 'high', 'low', 'close', 'volume']
-        live_df = pd.DataFrame(ohlcv, columns=columns)
-
-        # 2. Align timestamps to actual timeframe frequency
         freq_map = {"1m": 1, "3m": 3, "4m": 4, "5m": 5, "15m": 15, "30m": 30, "1h": 60, "2h": 120, "4h": 240, "1d": 1440}
         minutes_per_bar = freq_map.get(timeframe.lower(), 60)
 
-        # Convert epoch milliseconds directly into datetime objects matching timeframe resolution
-        live_df['timestamp'] = pd.to_datetime(live_df['timestamp'], unit='ms')
+        if context_bars and context_bars.strip().startswith('['):
+            import json as py_json
+            parsed_bars = py_json.loads(context_bars)
+            live_df = pd.DataFrame(parsed_bars)
+            if 'timestamp' in live_df.columns and not pd.api.types.is_datetime64_any_dtype(live_df['timestamp']):
+                live_df['timestamp'] = pd.to_datetime(live_df['timestamp'], unit='ms' if isinstance(live_df['timestamp'].iloc[0], (int, float)) else None)
+        else:
+            exchange = ccxt.binance({'enableRateLimit': True})
+            columns = ['timestamp', 'open', 'high', 'low', 'close', 'volume']
+            if end_time:
+                try:
+                    since_ms = int(end_time)
+                except ValueError:
+                    since_dt = pd.to_datetime(end_time)
+                    since_ms = int(since_dt.timestamp() * 1000)
+                cutoff_ms = since_ms
+                fetch_since = cutoff_ms - (200 * minutes_per_bar * 60 * 1000)
+                ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, since=fetch_since, limit=200)
+                ohlcv = [b for b in ohlcv if b[0] <= cutoff_ms]
+            else:
+                ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=200)
+
+            live_df = pd.DataFrame(ohlcv, columns=columns)
+            live_df['timestamp'] = pd.to_datetime(live_df['timestamp'], unit='ms')
+
         df = live_df.tail(100).copy().reset_index(drop=True)
 
         last_time = df['timestamp'].iloc[-1]
