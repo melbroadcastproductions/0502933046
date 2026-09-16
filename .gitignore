@@ -3,3 +3,8 @@
 /.vscode
 *.log
 target
+
+target/
+/target/
+*.pyc
+__pycache__/
