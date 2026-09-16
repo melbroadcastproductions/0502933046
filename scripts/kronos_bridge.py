@@ -34,8 +34,15 @@ class KronosRequestHandler(BaseHTTPRequestHandler):
             pass
 
     def log_message(self, format, *args):
-        # Quiet standard server logging to keep terminal output clean
-        pass
+        client_ip = self.client_address[0]
+        log_entry = f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Connection/Request from {client_ip} - {format % args}
+"
+        print(log_entry.strip())
+        try:
+            with open('kronos_bridge.log', 'a') as log_f:
+                log_f.write(log_entry)
+        except Exception:
+            pass
 
     def do_POST(self):
         content_length = int(self.headers.get('Content-Length', 0))
