@@ -196,13 +196,13 @@ class KronosRequestHandler(BaseHTTPRequestHandler):
             calculated_conf = min(95.0, round(50.0 + ratio * 70.0, 1))
 
             if is_bullish:
-                # Bullish setup (LONG): Buy Entry at current/dip, Target TP at pred_high
-                buy_trigger = last_close
+                # Bullish setup (LONG): Buy Trigger at support/dip level (pred_low), Target TP at pred_high
+                buy_trigger = pred_low
                 sell_trigger = pred_high
                 overall_conf = calculated_conf
             else:
-                # Bearish setup (SHORT): Sell Entry at current/rally, Target TP at pred_low
-                sell_trigger = last_close
+                # Bearish setup (SHORT): Sell Trigger at resistance/rally level (pred_high), Target TP at pred_low
+                sell_trigger = pred_high
                 buy_trigger = pred_low
                 overall_conf = calculated_conf
 
