@@ -14,17 +14,16 @@ for path in [script_dir, parent_dir, os.getcwd()]:
     if path not in sys.path:
         sys.path.insert(0, path)
 
-# Try importing predict_crypto from kronos_mcp.py
-PREDICT_CRYPTO_AVAILABLE = False
-try:
-    from scripts.kronos_mcp import predict_crypto
-    PREDICT_CRYPTO_AVAILABLE = True
-except ImportError:
+def get_predict_fn():
     try:
         from kronos_mcp import predict_crypto
-        PREDICT_CRYPTO_AVAILABLE = True
-    except ImportError:
-        pass
+        return predict_crypto
+    except Exception:
+        try:
+            from scripts.kronos_mcp import predict_crypto
+            return predict_crypto
+        except Exception:
+            return None
 
 class KronosRequestHandler(BaseHTTPRequestHandler):
     def handle(self):
@@ -51,9 +50,12 @@ class KronosRequestHandler(BaseHTTPRequestHandler):
 
         try:
             req_data = json.loads(body) if body else {}
+        except Exception:
+            req_data = {}
 
+        try:
             # Handle JSON-RPC 2.0 requests from MCP clients (Claude Desktop / mcp-remote)
-            if "jsonrpc" in req_data or self.path.startswith('/messages'):
+            if isinstance(req_data, dict) and ("jsonrpc" in req_data or self.path.startswith('/messages')):
                 msg_id = req_data.get('id', 0)
                 method = req_data.get('method', '')
 
@@ -104,10 +106,11 @@ class KronosRequestHandler(BaseHTTPRequestHandler):
                     end_time = args.get('end_time', '')
                     context_bars = args.get('context_bars', '')
 
-                    if PREDICT_CRYPTO_AVAILABLE:
-                        text_res = predict_crypto(symbol=symbol, timeframe=timeframe, pred_len=pred_len, end_time=end_time, context_bars=context_bars)
+                    predict_fn = get_predict_fn()
+                    if predict_fn is not None:
+                        text_res = predict_fn(symbol=symbol, timeframe=timeframe, pred_len=pred_len, end_time=end_time, context_bars=context_bars)
                     else:
-                        text_res = f"Kronos prediction for {symbol} ({timeframe}): High: 82500.0, Low: 78000.0, Close: 80000.0"
+                        text_res = f"Error: Kronos predictor tool unavailable for {symbol} ({timeframe})"
 
                     rpc_resp = {
                         "jsonrpc": "2.0",
@@ -138,7 +141,7 @@ class KronosRequestHandler(BaseHTTPRequestHandler):
                 return
 
             # Handle REST prediction requests from Flowsurface Candlestick chart
-            raw_symbol = req_data.get('symbol', 'BTCUSDT')
+            raw_symbol = req_data.get('symbol', 'BTCUSDT') if isinstance(req_data, dict) else 'BTCUSDT'
 
             # Strip exchange suffixes e.g. "ETHUSDT.P", "ETHUSDT_PERP", "ETH/USDT:USDT"
             clean_sym = raw_symbol.upper().replace('.P', '').replace('_PERP', '').replace(' PERP', '')
@@ -155,10 +158,10 @@ class KronosRequestHandler(BaseHTTPRequestHandler):
             else:
                 symbol = clean_sym
 
-            timeframe = req_data.get('timeframe', '15m')
-            pred_len = req_data.get('pred_len', 24)
-            end_time = req_data.get('end_time', '')
-            context_bars = req_data.get('context_bars', '')
+            timeframe = req_data.get('timeframe', '15m') if isinstance(req_data, dict) else '15m'
+            pred_len = req_data.get('pred_len', 24) if isinstance(req_data, dict) else 24
+            end_time = req_data.get('end_time', '') if isinstance(req_data, dict) else ''
+            context_bars = req_data.get('context_bars', '') if isinstance(req_data, dict) else ''
 
             last_close = 0.0
             try:
@@ -169,20 +172,25 @@ class KronosRequestHandler(BaseHTTPRequestHandler):
             except Exception:
                 pass
 
-            if PREDICT_CRYPTO_AVAILABLE:
-                forecast_text = predict_crypto(symbol=symbol, timeframe=timeframe, pred_len=pred_len, end_time=end_time, context_bars=context_bars)
+            predict_fn = get_predict_fn()
+            forecast_text = ""
+            if predict_fn is not None:
+                try:
+                    forecast_text = predict_fn(symbol=symbol, timeframe=timeframe, pred_len=pred_len, end_time=end_time, context_bars=context_bars)
+                except Exception:
+                    forecast_text = ""
 
-                # Parse high, low, close from text output if successful
-                highs = [float(h) for h in re.findall(r'High:\s*([\d\.]+)', forecast_text)]
-                lows = [float(l) for l in re.findall(r'Low:\s*([\d\.]+)', forecast_text)]
-                closes = [float(c) for c in re.findall(r'Close:\s*([\d\.]+)', forecast_text)]
+            # Parse high, low, close from text output if successful
+            highs = [float(h) for h in re.findall(r'High:\s*([\d\.]+)', forecast_text)]
+            lows = [float(l) for l in re.findall(r'Low:\s*([\d\.]+)', forecast_text)]
+            closes = [float(c) for c in re.findall(r'Close:\s*([\d\.]+)', forecast_text)]
 
-                if highs and lows:
-                    pred_high = max(highs)
-                    pred_low = min(lows)
-                    pred_close = closes[-1] if closes else (pred_high + pred_low) / 2.0
-                    if last_close == 0.0 and closes:
-                        last_close = closes[0]
+            if highs and lows:
+                pred_high = max(highs)
+                pred_low = min(lows)
+                pred_close = closes[-1] if closes else (pred_high + pred_low) / 2.0
+                if last_close == 0.0 and closes:
+                    last_close = closes[0]
 
             if 'pred_high' not in locals() or pred_high <= 0.0:
                 # Dynamic symbol-proportional fallback if predictions fail
@@ -235,10 +243,29 @@ class KronosRequestHandler(BaseHTTPRequestHandler):
 
         except Exception as e:
             try:
-                self.send_response(500)
-                self.send_header('Content-Type', 'application/json')
-                self.end_headers()
-                self.wfile.write(json.dumps({"status": "error", "error": str(e)}).encode('utf-8'))
+                msg_id = req_data.get('id', 0) if isinstance(req_data, dict) else 0
+                if isinstance(req_data, dict) and ('jsonrpc' in req_data or self.path.startswith('/messages') or self.path.startswith('/sse')):
+                    rpc_err = {
+                        "jsonrpc": "2.0",
+                        "id": msg_id,
+                        "result": {
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": f"Error running Kronos prediction: {str(e)}"
+                                }
+                            ]
+                        }
+                    }
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps(rpc_err).encode('utf-8'))
+                else:
+                    self.send_response(500)
+                    self.send_header('Content-Type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"status": "error", "error": str(e)}).encode('utf-8'))
             except (ConnectionAbortedError, BrokenPipeError, ConnectionResetError, OSError):
                 pass
 
@@ -259,7 +286,8 @@ class KronosRequestHandler(BaseHTTPRequestHandler):
             self.send_header('Content-Type', 'application/json')
             self.end_headers()
             try:
-                self.wfile.write(json.dumps({"status": "running", "mcp_available": PREDICT_CRYPTO_AVAILABLE}).encode('utf-8'))
+                mcp_ok = get_predict_fn() is not None
+                self.wfile.write(json.dumps({"status": "running", "mcp_available": mcp_ok}).encode('utf-8'))
             except (ConnectionAbortedError, BrokenPipeError, ConnectionResetError, OSError):
                 pass
 

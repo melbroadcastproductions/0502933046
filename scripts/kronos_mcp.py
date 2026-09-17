@@ -238,7 +238,7 @@ def predict_crypto(
                 time_str = idx_row.strftime('%Y-%m-%d %H:%M')
                 lines.append(f"Time: {time_str} | Open: {row['open']:.2f} | High: {row['high']:.2f} | Low: {row['low']:.2f} | Close: {row['close']:.2f}")
 
-            return "\\n".join(lines)
+            return "\n".join(lines)
         else:
             last_close = float(df['close'].iloc[-1])
             tf_returns = df['close'].pct_change().dropna()
@@ -263,7 +263,7 @@ def predict_crypto(
                 time_str = f_time.strftime('%Y-%m-%d %H:%M')
                 lines.append(f"Time: {time_str} | Open: {step_open:.2f} | High: {step_high:.2f} | Low: {step_low:.2f} | Close: {step_close:.2f}")
 
-            return "\\n".join(lines)
+            return "\n".join(lines)
 
     except Exception as e:
         return f"Error running Kronos calculation loop: {str(e)}"
