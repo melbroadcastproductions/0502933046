@@ -174,7 +174,7 @@ def get_trading_signal(
             "predicted_close": pred_close,
             "buy_confidence": overall_conf,
             "sell_confidence": overall_conf,
-            "summary": f"Kronos Primary Signal: {primary_action} ({symbol} {timeframe}) | Entry:  | Target Close: "
+            "summary": f"Kronos Primary Signal: {primary_action} ({symbol} {timeframe}) | Entry: ${last_close:.2f} | Target Close: ${pred_close:.2f}"
         }
         return json.dumps(signal, indent=2)
     except Exception as e:
@@ -233,13 +233,12 @@ def predict_crypto(
             if 'sample' in forecast.index.names:
                 forecast = forecast.xs(0, level='sample')
 
-            result_text = f"=== Kronos Local Model Forecast for {symbol} ({timeframe}) ===\n"
+            lines = [f"=== Kronos Local Model Forecast for {symbol} ({timeframe}) ==="]
             for idx_row, row in forecast.iterrows():
                 time_str = idx_row.strftime('%Y-%m-%d %H:%M')
-                result_text += f"Time: {time_str} | Open: {row['open']:.2f} | High: {row['high']:.2f} | Low: {row['low']:.2f} | Close: {row['close']:.2f}
-"
+                lines.append(f"Time: {time_str} | Open: {row['open']:.2f} | High: {row['high']:.2f} | Low: {row['low']:.2f} | Close: {row['close']:.2f}")
 
-            return result_text
+            return "\\n".join(lines)
         else:
             last_close = float(df['close'].iloc[-1])
             tf_returns = df['close'].pct_change().dropna()
@@ -251,8 +250,7 @@ def predict_crypto(
             timeframe_vol_factor = (minutes_per_bar / 60.0) ** 0.5
             effective_step_vol = min(step_std, 0.005 * timeframe_vol_factor)
 
-            result_text = f"=== Kronos Technical Forecast for {symbol} ({timeframe}) ===
-"
+            lines = [f"=== Kronos Technical Forecast for {symbol} ({timeframe}) ==="]
             curr_price = last_close
             for i, f_time in enumerate(future_stamps, 1):
                 step_open = curr_price
@@ -263,10 +261,9 @@ def predict_crypto(
                 curr_price = step_close
 
                 time_str = f_time.strftime('%Y-%m-%d %H:%M')
-                result_text += f"Time: {time_str} | Open: {step_open:.2f} | High: {step_high:.2f} | Low: {step_low:.2f} | Close: {step_close:.2f}
-"
+                lines.append(f"Time: {time_str} | Open: {step_open:.2f} | High: {step_high:.2f} | Low: {step_low:.2f} | Close: {step_close:.2f}")
 
-            return result_text
+            return "\\n".join(lines)
 
     except Exception as e:
         return f"Error running Kronos calculation loop: {str(e)}"
