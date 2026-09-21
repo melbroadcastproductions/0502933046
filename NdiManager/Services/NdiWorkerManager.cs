@@ -235,7 +235,8 @@ namespace NdiManager.Services
                         ["umd_text"] = config.UmdText
                     };
 
-                    int ipSuffix = 102 + (existingWorkers.Count % 140);
+                    // IP allocation starts at 10.10.1.10 up to 10.10.1.250 (reserving 10.10.1.1 exclusively for NDI Discovery Server)
+                    int ipSuffix = 10 + (existingWorkers.Count % 240);
                     string assignedWorkerIp = $"10.10.1.{ipSuffix}";
 
                     var response = await _dockerClient.Containers.CreateContainerAsync(new CreateContainerParameters

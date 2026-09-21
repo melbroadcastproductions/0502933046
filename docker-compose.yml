@@ -22,7 +22,7 @@ services:
     container_name: ndi-worker-demo
     networks:
       ndi_net:
-        ipv4_address: 10.10.1.101
+        ipv4_address: 10.10.1.10
     labels:
       - "type=ndi-worker"
 
