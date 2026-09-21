@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NDI Broadcast Central Manager</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>📺 NDI Broadcast Central Manager</h1>
+            <p class="subtitle">Central Control Plane & Container Service Registry</p>
+        </div>
+    </header>
+
+    <main class="container">
+        <section class="summary-cards">
+            <div class="card">
+                <h3>Total NDI Services</h3>
+                <p class="metric" id="total-count">{{ total_services }}</p>
+            </div>
+            <div class="card">
+                <h3>Discovery Server</h3>
+                <p class="metric-text">{{ discovery_host }}:{{ discovery_port }}</p>
+                <span class="badge badge-success">Active</span>
+            </div>
+            <div class="card">
+                <h3>System Status</h3>
+                <p class="metric-text">Operational</p>
+                <span class="badge badge-success">Online</span>
+            </div>
+        </section>
+
+        <section class="services-section">
+            <h2>Registered NDI Services</h2>
+            {% if services %}
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Service Name</th>
+                            <th>Type</th>
+                            <th>Host:Port</th>
+                            <th>NDI Streams</th>
+                            <th>Status</th>
+                            <th>Last Heartbeat</th>
+                            <th>Metrics</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for service in services %}
+                        <tr>
+                            <td><strong>{{ service.name }}</strong><br><small>{{ service.service_id }}</small></td>
+                            <td><span class="type-tag">{{ service.service_type }}</span></td>
+                            <td><code>{{ service.host }}:{{ service.port }}</code></td>
+                            <td>
+                                {% if service.ndi_sources %}
+                                    {% for src in service.ndi_sources %}
+                                        <span class="stream-badge">{{ src }}</span>
+                                    {% endfor %}
+                                {% else %}
+                                    <em>None</em>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if service.status == 'healthy' %}
+                                    <span class="badge badge-success">Healthy</span>
+                                {% elif service.status == 'stale' %}
+                                    <span class="badge badge-warning">Stale</span>
+                                {% else %}
+                                    <span class="badge badge-danger">{{ service.status }}</span>
+                                {% endif %}
+                            </td>
+                            <td><small>{{ service.last_heartbeat }}</small></td>
+                            <td><small><code>{{ service.metrics | tojson }}</code></small></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <p>No NDI services registered yet. Spin up NDI generator, processor, or monitor containers to see them here.</p>
+            </div>
+            {% endif %}
+        </section>
+    </main>
+</body>
+</html>

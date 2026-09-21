@@ -1,0 +1,140 @@
+:root {
+    --bg-color: #0f172a;
+    --card-bg: #1e293b;
+    --text-color: #f8fafc;
+    --text-muted: #94a3b8;
+    --accent: #38bdf8;
+    --border: #334155;
+    --success: #22c55e;
+    --warning: #f59e0b;
+    --danger: #ef4444;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    margin: 0;
+    padding: 0;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 1.5rem;
+}
+
+header {
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 2rem;
+    background-color: rgba(30, 41, 59, 0.5);
+}
+
+h1 {
+    margin: 0;
+    font-size: 1.8rem;
+    color: #ffffff;
+}
+
+.subtitle {
+    color: var(--text-muted);
+    margin-top: 0.25rem;
+    margin-bottom: 0;
+}
+
+.summary-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.card {
+    background-color: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.25rem;
+}
+
+.card h3 {
+    margin-top: 0;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+.metric {
+    font-size: 2rem;
+    font-weight: bold;
+    margin: 0.5rem 0;
+    color: var(--accent);
+}
+
+.metric-text {
+    font-size: 1.2rem;
+    font-weight: 600;
+    margin: 0.5rem 0;
+}
+
+.badge {
+    display: inline-block;
+    padding: 0.25rem 0.6rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border-radius: 9999px;
+    text-transform: uppercase;
+}
+
+.badge-success { background-color: rgba(34, 197, 94, 0.2); color: var(--success); }
+.badge-warning { background-color: rgba(245, 158, 11, 0.2); color: var(--warning); }
+.badge-danger { background-color: rgba(239, 68, 68, 0.2); color: var(--danger); }
+
+.type-tag {
+    background-color: rgba(56, 189, 248, 0.15);
+    color: var(--accent);
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.stream-badge {
+    display: inline-block;
+    background-color: #334155;
+    color: #ffffff;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    margin-right: 0.25rem;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    background-color: var(--card-bg);
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+}
+
+th, td {
+    padding: 1rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+}
+
+th {
+    background-color: #1a2332;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    text-transform: uppercase;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 3rem;
+    background-color: var(--card-bg);
+    border-radius: 8px;
+    border: 1px dashed var(--border);
+    color: var(--text-muted);
+}
