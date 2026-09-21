@@ -120,8 +120,9 @@ namespace NdiWorker
                 case "webpage":
                     if (!string.IsNullOrEmpty(SourceUri))
                     {
+                        string safeUri = SourceUri.Replace(":", "\\:");
                         inputArgs = $"-f lavfi -i \"mandelbrot=size={Resolution}:rate={Fps}\" -f lavfi -i \"{asource}\"";
-                        string webOverlay = $"drawtext=text='LIVE WEB PAGE\\: {SourceUri}':x=40:y=140:fontsize=24:fontcolor=cyan:box=1:boxcolor={tallyBoxColor}";
+                        string webOverlay = $"drawtext=text='LIVE WEB PAGE\\: {safeUri}':x=40:y=140:fontsize=24:fontcolor=cyan:box=1:boxcolor={tallyBoxColor}";
                         filterArgs = $"-vf \"{vfilter},{webOverlay}\"";
                     }
                     else
@@ -199,9 +200,18 @@ namespace NdiWorker
             try
             {
                 using var listener = new HttpListener();
-                listener.Prefixes.Add($"http://*:{port}/");
-                listener.Start();
-                Console.WriteLine($"[NdiWorker] Health HTTP listener listening on http://0.0.0.0:{port}/");
+                try
+                {
+                    listener.Prefixes.Add($"http://*:{port}/");
+                    listener.Start();
+                }
+                catch
+                {
+                    listener.Prefixes.Clear();
+                    listener.Prefixes.Add($"http://localhost:{port}/");
+                    listener.Start();
+                }
+                Console.WriteLine($"[NdiWorker] Health HTTP listener listening on port {port}");
 
                 while (!token.IsCancellationRequested)
                 {

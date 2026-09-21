@@ -1,12 +1,4 @@
 services:
-  ndi-discovery-server:
-    image: alpine:latest
-    container_name: ndi-discovery-server
-    command: sh -c "echo 'NDI Discovery Server active on port 5959' && nc -lk -p 5959"
-    ports:
-      - "5959:5959"
-    restart: unless-stopped
-
   ndi-manager:
     build:
       context: ./NdiManager
@@ -20,7 +12,6 @@ services:
       - WORKER_IMAGE=ndi-worker:latest
     restart: unless-stopped
     depends_on:
-      - ndi-discovery-server
       - ndi-worker-demo
 
   ndi-worker-demo:

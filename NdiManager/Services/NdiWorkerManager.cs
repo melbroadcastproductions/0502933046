@@ -218,6 +218,14 @@ namespace NdiManager.Services
             string logPath = Path.Combine(Path.GetTempPath(), $"{id}.log");
             string rootDir = Directory.GetParent(Directory.GetCurrentDirectory())?.FullName ?? Directory.GetCurrentDirectory();
             string workerDll = Path.Combine(rootDir, "NdiWorker", "bin", "Debug", "net10.0", "NdiWorker.dll");
+            if (!File.Exists(workerDll))
+            {
+                workerDll = Path.Combine(rootDir, "NdiWorker", "bin", "Release", "net10.0", "NdiWorker.dll");
+            }
+            if (!File.Exists(workerDll))
+            {
+                workerDll = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "NdiWorker.dll");
+            }
 
             var psi = new ProcessStartInfo
             {
