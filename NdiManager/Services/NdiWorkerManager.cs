@@ -235,6 +235,9 @@ namespace NdiManager.Services
                         ["umd_text"] = config.UmdText
                     };
 
+                    int ipSuffix = 102 + (existingWorkers.Count % 140);
+                    string assignedWorkerIp = $"10.10.1.{ipSuffix}";
+
                     var response = await _dockerClient.Containers.CreateContainerAsync(new CreateContainerParameters
                     {
                         Image = "ndi-worker:latest",
@@ -259,17 +262,17 @@ namespace NdiManager.Services
                             $"TALLY_STATE={config.TallyState}",
                             $"UMD_TEXT={config.UmdText}"
                         },
-                        ExposedPorts = new Dictionary<string, EmptyStruct>
+                        NetworkingConfig = new NetworkingConfig
                         {
-                            [$"{config.HealthPort}/tcp"] = default,
-                            [$"{config.DestPort}/udp"] = default
-                        },
-                        HostConfig = new HostConfig
-                        {
-                            PortBindings = new Dictionary<string, IList<PortBinding>>
+                            EndpointsConfig = new Dictionary<string, EndpointSettings>
                             {
-                                [$"{config.HealthPort}/tcp"] = new List<PortBinding> { new PortBinding { HostPort = config.HealthPort.ToString() } },
-                                [$"{config.DestPort}/udp"] = new List<PortBinding> { new PortBinding { HostPort = config.DestPort.ToString() } }
+                                ["ndi_net"] = new EndpointSettings
+                                {
+                                    IPAMConfig = new EndpointIPAMConfig
+                                    {
+                                        IPv4Address = assignedWorkerIp
+                                    }
+                                }
                             }
                         }
                     });
