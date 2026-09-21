@@ -71,11 +71,14 @@ def get_kronos_predictor():
     global GLOBAL_PREDICTOR
     if GLOBAL_PREDICTOR is None:
         try:
+            print("[Kronos AI] Loading Kronos PyTorch model and tokenizer...")
             Kronos, KronosTokenizer, KronosPredictor = load_kronos_classes()
             tokenizer = KronosTokenizer.from_pretrained("NeoQuasar/Kronos-Tokenizer-base")
             model = Kronos.from_pretrained("NeoQuasar/Kronos-base")
             GLOBAL_PREDICTOR = KronosPredictor(model, tokenizer, device="cpu", max_context=512)
-        except Exception:
+            print("[Kronos AI] Kronos model successfully loaded and initialized!")
+        except Exception as e:
+            print(f"[Kronos AI] Model load failed ({e}). Using technical volatility forecast fallback.")
             GLOBAL_PREDICTOR = None
     return GLOBAL_PREDICTOR
 
