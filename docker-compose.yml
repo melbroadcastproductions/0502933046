@@ -23,8 +23,8 @@ services:
     image: ndi-worker:latest
     container_name: ndi-worker-demo
     ports:
-      - "10.10.1.2:8080:8080"
-      - "10.10.1.2:5004:5004/udp"
+      - "10.10.1.10:8080:8080"
+      - "10.10.1.10:5004:5004/udp"
     labels:
       - "type=ndi-worker"
     environment:

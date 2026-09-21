@@ -95,7 +95,7 @@ namespace NdiManager.Services
             {
                 var w = kvp.Value;
                 bool isRunning = w.Process != null && !w.Process.HasExited;
-                string targetHost = string.IsNullOrEmpty(w.Config.DestIp) || w.Config.DestIp.StartsWith("239.") ? "10.10.1.1" : w.Config.DestIp;
+                string targetHost = string.IsNullOrEmpty(w.Config.DestIp) || w.Config.DestIp.StartsWith("239.") ? "10.10.1.2" : w.Config.DestIp;
                 object? health = isRunning ? await FetchHealthAsync(w.Config.HealthPort, targetHost) : null;
 
                 result.Add(new WorkerResponse
@@ -146,7 +146,7 @@ namespace NdiManager.Services
             };
 
             bool isRunning = c.State == "running";
-            string targetHost = string.IsNullOrEmpty(config.DestIp) || config.DestIp.StartsWith("239.") ? "10.10.1.1" : config.DestIp;
+            string targetHost = string.IsNullOrEmpty(config.DestIp) || config.DestIp.StartsWith("239.") ? "10.10.1.10" : config.DestIp;
             object? health = isRunning ? await FetchHealthAsync(config.HealthPort, targetHost) : null;
 
             return new WorkerResponse
