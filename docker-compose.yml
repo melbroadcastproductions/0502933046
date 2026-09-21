@@ -1,0 +1,47 @@
+version: "3.8"
+
+services:
+  ndi-manager:
+    build:
+      context: ./NdiManager
+      dockerfile: Dockerfile
+    container_name: ndi-video-manager
+    ports:
+      - "8000:8000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - WORKER_IMAGE=ndi-worker:latest
+    restart: unless-stopped
+    depends_on:
+      - ndi-worker-demo
+
+  ndi-worker-demo:
+    build:
+      context: ./NdiWorker
+      dockerfile: Dockerfile
+    image: ndi-worker:latest
+    container_name: ndi-worker-demo
+    labels:
+      - "type=ndi-worker"
+    environment:
+      - STREAM_NAME=NDI-FINANCIAL-01
+      - SOURCE_TYPE=WebPage
+      - SOURCE_URI=https://finance.yahoo.com
+      - DISCOVERY_MODE=Bonjour
+      - DISCOVERY_SERVER_IP=127.0.0.1
+      - DISCOVERY_SERVER_PORT=5959
+      - TALLY_STATE=Program
+      - UMD_TEXT=CAM 1 FINANCIAL
+      - RESOLUTION=1920x1080
+      - FPS=30
+      - PATTERN=smptebars
+      - AUDIO_FREQ=1000
+      - OVERLAY_TEXT=LIVE STATS FEED
+      - DEST_IP=239.255.0.1
+      - DEST_PORT=5004
+      - HEALTH_PORT=8080
+    ports:
+      - "8080:8080"
+      - "5004:5004/udp"
+    restart: unless-stopped

@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NDI Video Docker Manager - Quad Split Monitor & Tally</title>
+    <link rel="stylesheet" href="/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Top Navigation Header -->
+        <header class="navbar">
+            <div class="brand">
+                <i class="fa-solid fa-video text-primary"></i>
+                <span class="title">NDI Docker Hub (.NET 10)</span>
+                <span class="version-tag">C# Broadcast Suite</span>
+            </div>
+            <div class="sys-metrics" id="sysMetrics">
+                <div class="metric-card">
+                    <span class="label">Engine Mode:</span>
+                    <span class="badge" id="engineModeBadge">Loading...</span>
+                </div>
+                <div class="metric-card">
+                    <span class="label">Discovery:</span>
+                    <span class="val" id="discoveryModeVal">Bonjour / Central</span>
+                </div>
+                <div class="metric-card">
+                    <span class="label">Workers:</span>
+                    <span class="val" id="workerCountVal">0</span>
+                </div>
+                <div class="metric-card">
+                    <span class="label">CPU:</span>
+                    <span class="val" id="cpuUsageVal">0%</span>
+                </div>
+                <div class="metric-card">
+                    <span class="label">RAM:</span>
+                    <span class="val" id="ramUsageVal">0 MB</span>
+                </div>
+            </div>
+            <div class="header-actions">
+                <button class="btn btn-primary" id="openModalBtn">
+                    <i class="fa-solid fa-plus"></i> Spawn NDI Worker
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Dashboard Content -->
+        <main class="main-content">
+            <!-- Quad Split Multiviewer Section -->
+            <section class="quad-split-section">
+                <div class="section-header">
+                    <h2><i class="fa-solid fa-border-all"></i> NDI Quad Split Multiviewer Monitor (Tally & UMD)</h2>
+                    <span class="subtitle-tag">Live 2x2 Broadcast Monitor Grid</span>
+                </div>
+                <div class="quad-grid" id="quadGrid">
+                    <!-- 4 Quad Monitor Tiles rendered dynamically -->
+                    <div class="quad-tile empty" id="quad-1">
+                        <div class="quad-screen">
+                            <i class="fa-solid fa-tv"></i>
+                            <span>Quad 1: Unassigned / Idle</span>
+                        </div>
+                        <div class="umd-bar">
+                            <span class="umd-label">CAM 1</span>
+                            <span class="umd-sub">NO FEED</span>
+                        </div>
+                    </div>
+                    <div class="quad-tile empty" id="quad-2">
+                        <div class="quad-screen">
+                            <i class="fa-solid fa-tv"></i>
+                            <span>Quad 2: Unassigned / Idle</span>
+                        </div>
+                        <div class="umd-bar">
+                            <span class="umd-label">CAM 2</span>
+                            <span class="umd-sub">NO FEED</span>
+                        </div>
+                    </div>
+                    <div class="quad-tile empty" id="quad-3">
+                        <div class="quad-screen">
+                            <i class="fa-solid fa-tv"></i>
+                            <span>Quad 3: Unassigned / Idle</span>
+                        </div>
+                        <div class="umd-bar">
+                            <span class="umd-label">CAM 3</span>
+                            <span class="umd-sub">NO FEED</span>
+                        </div>
+                    </div>
+                    <div class="quad-tile empty" id="quad-4">
+                        <div class="quad-screen">
+                            <i class="fa-solid fa-tv"></i>
+                            <span>Quad 4: Unassigned / Idle</span>
+                        </div>
+                        <div class="umd-bar">
+                            <span class="umd-label">CAM 4</span>
+                            <span class="umd-sub">NO FEED</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Worker List Management Section -->
+            <section class="worker-list-section">
+                <div class="section-header">
+                    <h2><i class="fa-solid fa-network-wired"></i> Managed NDI Stream Workers</h2>
+                    <button class="btn btn-secondary btn-sm" id="refreshBtn">
+                        <i class="fa-solid fa-rotate-right"></i> Refresh
+                    </button>
+                </div>
+                <div class="worker-grid" id="workerGrid">
+                    <!-- Worker cards rendered dynamically -->
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Modal: Spawn NDI Worker -->
+    <div class="modal-overlay" id="spawnModal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-square-plus"></i> Spawn NDI Video Docker</h3>
+                <button class="close-btn" id="closeModalBtn">&times;</button>
+            </div>
+            <form id="spawnForm">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Stream Name / UMD Label</label>
+                        <input type="text" id="streamName" value="NDI-FINANCIAL-01" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Source Type</label>
+                        <select id="sourceType">
+                            <option value="ColorBars">Color Bars & Test Patterns</option>
+                            <option value="Picture">Show Picture (Image Source)</option>
+                            <option value="VideoClip">Show Video Clip (MP4/MKV Source)</option>
+                            <option value="WebPage" selected>Show Web Page (Live Financial Stats / Web)</option>
+                        </select>
+                    </div>
+                    <div class="form-group full-width" id="sourceUriGroup">
+                        <label>Source Path / Web URL (e.g. https://finance.yahoo.com or local file path)</label>
+                        <input type="text" id="sourceUri" value="https://finance.yahoo.com">
+                    </div>
+                    <div class="form-group">
+                        <label>NDI Discovery Mode</label>
+                        <select id="discoveryMode">
+                            <option value="Bonjour" selected>Bonjour (mDNS Multicast)</option>
+                            <option value="CentralServer">NDI Central Server</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Discovery Server IP & Port</label>
+                        <input type="text" id="discoveryServerIp" value="127.0.0.1:5959">
+                    </div>
+                    <div class="form-group">
+                        <label>Resolution</label>
+                        <select id="resolution">
+                            <option value="1920x1080" selected>1080p (1920x1080)</option>
+                            <option value="1280x720">720p (1280x720)</option>
+                            <option value="3840x2160">4K (3840x2160)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Frame Rate (FPS)</label>
+                        <select id="fps">
+                            <option value="30" selected>30 FPS</option>
+                            <option value="60">60 FPS</option>
+                            <option value="25">25 FPS</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Initial Tally State</label>
+                        <select id="tallyState">
+                            <option value="Off" selected>Off</option>
+                            <option value="Program">Program (Red Tally)</option>
+                            <option value="Preview">Preview (Green Tally)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Audio Tone (Hz)</label>
+                        <input type="number" id="audioFreq" value="1000" min="0" max="20000">
+                    </div>
+                    <div class="form-group">
+                        <label>Destination IP</label>
+                        <input type="text" id="destIp" value="239.255.0.1">
+                    </div>
+                    <div class="form-group">
+                        <label>Destination Port</label>
+                        <input type="number" id="destPort" value="5004">
+                    </div>
+                    <div class="form-group">
+                        <label>Health HTTP Port</label>
+                        <input type="number" id="healthPort" value="8080">
+                    </div>
+                    <div class="form-group full-width">
+                        <label>Custom Video Overlay Text</label>
+                        <input type="text" id="overlayText" value="LIVE FINANCIAL STATS FEED">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" id="cancelModalBtn">Cancel</button>
+                    <button type="submit" class="btn btn-primary"><i class="fa-solid fa-play"></i> Deploy Worker</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: View Logs -->
+    <div class="modal-overlay" id="logsModal">
+        <div class="modal-card modal-lg">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-terminal"></i> Container Logs: <span id="logsWorkerTitle"></span></h3>
+                <button class="close-btn" id="closeLogsBtn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <pre class="logs-console" id="logsConsole">Loading container logs...</pre>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="refreshLogsBtn"><i class="fa-solid fa-rotate-right"></i> Refresh Logs</button>
+                <button class="btn btn-secondary" id="dismissLogsBtn">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/app.js"></script>
+</body>
+</html>
