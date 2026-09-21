@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   ndi-manager:
     build:
@@ -5,7 +7,7 @@ services:
       dockerfile: Dockerfile
     container_name: ndi-video-manager
     ports:
-      - "10.10.1.10:8000:8000"
+      - "10.10.1.2:8000:8000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
@@ -20,12 +22,11 @@ services:
       dockerfile: Dockerfile
     image: ndi-worker:latest
     container_name: ndi-worker-demo
-    networks:
-      ndi_net:
-        ipv4_address: 10.10.1.10
+    ports:
+      - "10.10.1.2:8080:8080"
+      - "10.10.1.2:5004:5004/udp"
     labels:
       - "type=ndi-worker"
-
     environment:
       - STREAM_NAME=NDI-FINANCIAL-01
       - SOURCE_TYPE=WebPage
@@ -44,13 +45,3 @@ services:
       - DEST_PORT=5004
       - HEALTH_PORT=8080
     restart: unless-stopped
-
-networks:
-  ndi_net:
-    driver: macvlan
-    driver_opts:
-      parent: eth0
-    ipam:
-      config:
-        - subnet: 10.10.1.0/24
-          gateway: 10.10.1.1
