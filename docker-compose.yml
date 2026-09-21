@@ -23,7 +23,6 @@ services:
     ports:
       - "8080:8080"
       - "5004:5004/udp"
-      - "5353:5353/udp"
     labels:
       - "type=ndi-worker"
     environment:
