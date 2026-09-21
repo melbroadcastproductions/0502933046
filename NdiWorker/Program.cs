@@ -22,6 +22,7 @@ namespace NdiWorker
         private static readonly string DestIp = Environment.GetEnvironmentVariable("DEST_IP") ?? "239.255.0.1";
         private static readonly string DestPort = Environment.GetEnvironmentVariable("DEST_PORT") ?? "5004";
         private static readonly string WebRtcUrl = Environment.GetEnvironmentVariable("WEBRTC_URL") ?? "";
+        private static readonly string WorkerIp = Environment.GetEnvironmentVariable("WORKER_IP") ?? "10.10.1.10";
         private static readonly int HealthPort = int.TryParse(Environment.GetEnvironmentVariable("HEALTH_PORT"), out var p) ? p : 8080;
 
         // NDI Discovery & Tally / UMD parameters
@@ -323,8 +324,8 @@ namespace NdiWorker
         {
             if (DiscoveryMode.Equals("CentralServer", StringComparison.OrdinalIgnoreCase))
             {
-                string iniContent = $"[Network]\ndiscovery={DiscoveryServerIp}:{DiscoveryServerPort}\n";
-                Console.WriteLine($"[NdiWorker] Configuring NDI Discovery Central Server: {DiscoveryServerIp}:{DiscoveryServerPort}");
+                string iniContent = $"[Network]\ndiscovery={DiscoveryServerIp}:{DiscoveryServerPort}\nic_ip={WorkerIp}\nip_address={WorkerIp}\n";
+                Console.WriteLine($"[NdiWorker] Configuring NDI Discovery Central Server: {DiscoveryServerIp}:{DiscoveryServerPort} for Worker IP: {WorkerIp}");
                 try
                 {
                     Directory.CreateDirectory("/etc/ndi");

@@ -261,7 +261,8 @@ namespace NdiManager.Services
                             $"DISCOVERY_SERVER_IP={config.DiscoveryServerIp}",
                             $"DISCOVERY_SERVER_PORT={config.DiscoveryServerPort}",
                             $"TALLY_STATE={config.TallyState}",
-                            $"UMD_TEXT={config.UmdText}"
+                            $"UMD_TEXT={config.UmdText}",
+                            $"WORKER_IP={assignedWorkerIp}"
                         },
                         NetworkingConfig = new NetworkingConfig
                         {
@@ -294,6 +295,9 @@ namespace NdiManager.Services
             }
 
             // Fallback Process Runner
+            int procIpSuffix = 10 + (_processWorkers.Count % 240);
+            string assignedProcWorkerIp = $"10.10.1.{procIpSuffix}";
+
             string logPath = Path.Combine(Path.GetTempPath(), $"{id}.log");
             string rootDir = Directory.GetParent(Directory.GetCurrentDirectory())?.FullName ?? Directory.GetCurrentDirectory();
             string workerDll = Path.Combine(rootDir, "NdiWorker", "bin", "Debug", "net10.0", "NdiWorker.dll");
@@ -332,6 +336,7 @@ namespace NdiManager.Services
             psi.EnvironmentVariables["DISCOVERY_SERVER_PORT"] = config.DiscoveryServerPort.ToString();
             psi.EnvironmentVariables["TALLY_STATE"] = config.TallyState;
             psi.EnvironmentVariables["UMD_TEXT"] = config.UmdText;
+            psi.EnvironmentVariables["WORKER_IP"] = assignedProcWorkerIp;
 
             var proc = Process.Start(psi);
             if (proc != null)
