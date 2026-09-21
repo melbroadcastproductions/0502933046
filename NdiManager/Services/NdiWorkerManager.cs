@@ -114,11 +114,35 @@ namespace NdiManager.Services
             return result;
         }
 
+        private static string GetLabel(IDictionary<string, string> dict, string key, string fallback = "")
+        {
+            return dict != null && dict.TryGetValue(key, out var val) ? val : fallback;
+        }
+
         private async Task<WorkerResponse> FormatContainerWorkerAsync(ContainerListResponse c)
         {
+            var labels = c.Labels ?? new Dictionary<string, string>();
+            string fallbackName = c.Names.FirstOrDefault()?.TrimStart('/') ?? c.ID;
+            string streamName = GetLabel(labels, "stream_name", fallbackName);
+
             var config = new WorkerConfig
             {
-                StreamName = c.Names.FirstOrDefault()?.TrimStart('/') ?? c.ID,
+                StreamName = streamName,
+                SourceType = GetLabel(labels, "source_type", "ColorBars"),
+                SourceUri = GetLabel(labels, "source_uri", ""),
+                Resolution = GetLabel(labels, "resolution", "1920x1080"),
+                Fps = GetLabel(labels, "fps", "30"),
+                Pattern = GetLabel(labels, "pattern", "smptebars"),
+                AudioFreq = int.TryParse(GetLabel(labels, "audio_freq", "1000"), out var af) ? af : 1000,
+                OverlayText = GetLabel(labels, "overlay_text", "LIVE FINANCIAL NDI"),
+                DestIp = GetLabel(labels, "dest_ip", "239.255.0.1"),
+                DestPort = int.TryParse(GetLabel(labels, "dest_port", "5004"), out var dp) ? dp : 5004,
+                HealthPort = int.TryParse(GetLabel(labels, "health_port", "8080"), out var hp) ? hp : 8080,
+                DiscoveryMode = GetLabel(labels, "discovery_mode", "Bonjour"),
+                DiscoveryServerIp = GetLabel(labels, "discovery_server_ip", "10.10.1.1"),
+                DiscoveryServerPort = int.TryParse(GetLabel(labels, "discovery_server_port", "5959"), out var dsp) ? dsp : 5959,
+                TallyState = GetLabel(labels, "tally_state", "Off"),
+                UmdText = GetLabel(labels, "umd_text", streamName)
             };
 
             bool isRunning = c.State == "running";
@@ -172,11 +196,32 @@ namespace NdiManager.Services
             {
                 try
                 {
+                    var labels = new Dictionary<string, string>
+                    {
+                        ["type"] = "ndi-worker",
+                        ["stream_name"] = config.StreamName,
+                        ["source_type"] = config.SourceType,
+                        ["source_uri"] = config.SourceUri,
+                        ["resolution"] = config.Resolution,
+                        ["fps"] = config.Fps,
+                        ["pattern"] = config.Pattern,
+                        ["audio_freq"] = config.AudioFreq.ToString(),
+                        ["overlay_text"] = config.OverlayText,
+                        ["dest_ip"] = config.DestIp,
+                        ["dest_port"] = config.DestPort.ToString(),
+                        ["health_port"] = config.HealthPort.ToString(),
+                        ["discovery_mode"] = config.DiscoveryMode,
+                        ["discovery_server_ip"] = config.DiscoveryServerIp,
+                        ["discovery_server_port"] = config.DiscoveryServerPort.ToString(),
+                        ["tally_state"] = config.TallyState,
+                        ["umd_text"] = config.UmdText
+                    };
+
                     var response = await _dockerClient.Containers.CreateContainerAsync(new CreateContainerParameters
                     {
                         Image = "ndi-worker:latest",
                         Name = containerName,
-                        Labels = new Dictionary<string, string> { ["type"] = "ndi-worker" },
+                        Labels = labels,
                         Env = new List<string>
                         {
                             $"STREAM_NAME={config.StreamName}",

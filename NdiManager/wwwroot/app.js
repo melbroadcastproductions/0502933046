@@ -172,7 +172,7 @@ document.addEventListener("DOMContentLoaded", () => {
             discovery_server_port: parseInt(discIpPort[1] || "5959"),
             resolution: document.getElementById("resolution").value,
             fps: document.getElementById("fps").value,
-            pattern: document.getElementById("pattern").value,
+            pattern: document.getElementById("pattern") ? document.getElementById("pattern").value : "smptebars",
             tally_state: document.getElementById("tallyState").value,
             umd_text: document.getElementById("streamName").value,
             audio_freq: parseInt(document.getElementById("audioFreq").value),
