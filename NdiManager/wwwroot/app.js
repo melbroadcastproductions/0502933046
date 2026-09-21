@@ -33,6 +33,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 const data = await res.json();
                 engineModeBadge.textContent = data.docker_available ? "Docker Engine" : "Process Fallback";
                 engineModeBadge.className = `badge ${data.docker_available ? 'badge-green' : 'badge-yellow'}`;
+                discoveryModeVal.textContent = "Central Server (10.10.1.1:5959)";
                 workerCountVal.textContent = `${data.running_workers} / ${data.total_workers}`;
                 cpuUsageVal.textContent = `${data.cpu_usage_percent}%`;
                 ramUsageVal.textContent = `${data.memory_usage_mb} MB`;
