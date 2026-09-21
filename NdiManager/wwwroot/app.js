@@ -173,10 +173,14 @@ document.addEventListener("DOMContentLoaded", () => {
                 ? `<span class="badge badge-green"><i class="fa-solid fa-circle"></i> RUNNING</span>`
                 : `<span class="badge badge-red"><i class="fa-solid fa-stop"></i> STOPPED</span>`;
 
+            const webrtcBadge = w.config.webrtc_url
+                ? `<span class="badge badge-purple" style="background:#722ed1; color:#fff;"><i class="fa-solid fa-bolt"></i> WebRTC</span>`
+                : "";
+
             return `
                 <div class="worker-card" data-id="${w.id}">
                     <div class="card-header">
-                        <span class="stream-title"><i class="fa-solid fa-broadcast-tower"></i> ${escapeHtml(w.config.stream_name)}</span>
+                        <span class="stream-title"><i class="fa-solid fa-broadcast-tower"></i> ${escapeHtml(w.config.stream_name)} ${webrtcBadge}</span>
                         ${statusBadge}
                     </div>
                     <div class="card-body">

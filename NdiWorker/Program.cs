@@ -21,6 +21,7 @@ namespace NdiWorker
         private static readonly string OverlayText = Environment.GetEnvironmentVariable("OVERLAY_TEXT") ?? "LIVE FINANCIAL NDI";
         private static readonly string DestIp = Environment.GetEnvironmentVariable("DEST_IP") ?? "239.255.0.1";
         private static readonly string DestPort = Environment.GetEnvironmentVariable("DEST_PORT") ?? "5004";
+        private static readonly string WebRtcUrl = Environment.GetEnvironmentVariable("WEBRTC_URL") ?? "";
         private static readonly int HealthPort = int.TryParse(Environment.GetEnvironmentVariable("HEALTH_PORT"), out var p) ? p : 8080;
 
         // NDI Discovery & Tally / UMD parameters
@@ -216,9 +217,13 @@ namespace NdiWorker
 
             bool useNativeNdi = pNdiSender != IntPtr.Zero;
 
+            string rtpOutput = !string.IsNullOrEmpty(WebRtcUrl)
+                ? $" -c:v libx264 -preset ultrafast -tune zerolatency -an -f rtp \"{WebRtcUrl}\""
+                : "";
+
             string arguments = useNativeNdi
-                ? $"-re {inputArgs} {filterArgs} -pix_fmt bgra -f rawvideo pipe:1"
-                : $"-re {inputArgs} {filterArgs} -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -g {Fps} -c:a aac -b:a 128k -f mpegts \"udp://{DestIp}:{DestPort}?pkt_size=1316&ttl=1\"";
+                ? $"-re {inputArgs} {filterArgs} -pix_fmt bgra -f rawvideo pipe:1{rtpOutput}"
+                : $"-re {inputArgs} {filterArgs} -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -g {Fps} -c:a aac -b:a 128k -f mpegts \"udp://{DestIp}:{DestPort}?pkt_size=1316&ttl=1\"{rtpOutput}";
 
             Console.WriteLine($"[NdiWorker] Launching FFmpeg pipeline (Native NDI Mode: {useNativeNdi}): ffmpeg {arguments}");
 
