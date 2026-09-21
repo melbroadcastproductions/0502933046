@@ -1,0 +1,123 @@
+services:
+  central-manager:
+    build:
+      context: ./central-manager
+      dockerfile: Dockerfile
+    container_name: ndi-central-manager
+    ports:
+      - "8000:8000"
+    environment:
+      - NDI_DISCOVERY_SERVER_HOST=ndi-discovery-server
+      - NDI_DISCOVERY_SERVER_PORT=5959
+    networks:
+      - ndi-broadcast-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  ndi-discovery-server:
+    build:
+      context: ./ndi-discovery-server
+      dockerfile: Dockerfile
+    container_name: ndi-discovery-server
+    ports:
+      - "5959:5959/tcp"
+      - "5959:5959/udp"
+    networks:
+      - ndi-broadcast-net
+    restart: unless-stopped
+
+  ndi-generator:
+    build:
+      context: ./ndi-generator
+      dockerfile: Dockerfile
+    container_name: ndi-generator
+    environment:
+      - SERVICE_ID=ndi-gen-01
+      - SERVICE_NAME=NDI Test Pattern Generator
+      - HOST=ndi-generator
+      - PORT=8001
+      - CENTRAL_MANAGER_URL=http://central-manager:8000
+      - NDI_DISCOVERY_SERVER_HOST=ndi-discovery-server
+      - NDI_DISCOVERY_SERVER_PORT=5959
+      - NDI_STREAM_NAME=NDI_BARS_1080P60
+      - PATTERN=SMPTE_BARS_100
+      - FPS=60
+      - RESOLUTION=1920x1080
+    depends_on:
+      central-manager:
+        condition: service_healthy
+      ndi-discovery-server:
+        condition: service_started
+    networks:
+      - ndi-broadcast-net
+    restart: unless-stopped
+
+  ndi-processor:
+    build:
+      context: ./ndi-processor
+      dockerfile: Dockerfile
+    container_name: ndi-processor
+    ports:
+      - "8002:8002"
+    environment:
+      - SERVICE_ID=ndi-proc-01
+      - SERVICE_NAME=NDI Stream Processor Gateway
+      - HOST=ndi-processor
+      - PORT=8002
+      - CENTRAL_MANAGER_URL=http://central-manager:8000
+      - NDI_DISCOVERY_SERVER_HOST=ndi-discovery-server
+      - NDI_DISCOVERY_SERVER_PORT=5959
+      - INPUT_NDI_STREAM=NDI_BARS_1080P60
+      - OUTPUT_NDI_STREAM=NDI_PROCESSED_720P30
+    depends_on:
+      central-manager:
+        condition: service_healthy
+      ndi-discovery-server:
+        condition: service_started
+    networks:
+      - ndi-broadcast-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  ndi-monitor:
+    build:
+      context: ./ndi-monitor
+      dockerfile: Dockerfile
+    container_name: ndi-monitor
+    ports:
+      - "8003:8003"
+    environment:
+      - SERVICE_ID=ndi-mon-01
+      - SERVICE_NAME=NDI Broadcast Health Monitor
+      - HOST=ndi-monitor
+      - PORT=8003
+      - CENTRAL_MANAGER_URL=http://central-manager:8000
+      - NDI_DISCOVERY_SERVER_HOST=ndi-discovery-server
+      - NDI_DISCOVERY_SERVER_PORT=5959
+      - MONITORED_STREAMS=NDI_BARS_1080P60,NDI_PROCESSED_720P30
+    depends_on:
+      central-manager:
+        condition: service_healthy
+      ndi-discovery-server:
+        condition: service_started
+    networks:
+      - ndi-broadcast-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+networks:
+  ndi-broadcast-net:
+    driver: bridge
+    name: ndi-broadcast-net

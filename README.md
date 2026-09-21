@@ -1,62 +1,91 @@
-# How to Put Your Code on GitHub
+# Containerized NDI Services Stack with Central Manager
 
-This repository contains a guide on how to upload and maintain code on GitHub using Git.
-
-## Prerequisites
-1. **Install Git**: Make sure Git is installed on your computer.
-2. **GitHub Account**: Ensure you have a GitHub account created at [github.com](https://github.com).
+A production-ready microservices architecture for containerized NDI (Network Device Interface) video streaming in broadcast environments.
 
 ---
 
-## Step-by-Step Guide
+## 📐 System Architecture
 
-### 1. Initialize Git in Your Project Folder
-If your local project is not already a Git repository, open your terminal/command prompt in your project directory and run:
-```bash
-git init
 ```
-
-### 2. Add Your Files to Staging
-Add all your project files to the Git staging area:
-```bash
-git add .
-```
-
-### 3. Commit Your Changes
-Save your changes locally with a descriptive commit message:
-```bash
-git commit -m "Initial commit"
-```
-
-### 4. Create a New Repository on GitHub
-1. Go to [GitHub New Repository](https://github.com/new).
-2. Enter a repository name and choose whether it should be **Public** or **Private**.
-3. Do **not** check "Initialize this repository with a README" if you already created files locally.
-4. Click **Create repository**.
-
-### 5. Link Your Local Repository to GitHub
-Copy the remote repository URL from GitHub and add it to your local git setup:
-```bash
-git remote add origin <REMOTE_REPOSITORY_URL>
-```
-*(Example: `git remote add origin https://github.com/username/repository-name.git`)*
-
-### 6. Rename Default Branch (Optional but Recommended)
-Set your default branch name to `main`:
-```bash
-git branch -M main
-```
-
-### 7. Push Your Code to GitHub
-Push your local code to GitHub:
-```bash
-git push -u origin main
+                       +-------------------------------+
+                       |  NDI Central Manager (8000)   |
+                       |  (Registry & Control Plane)   |
+                       +---------------+---------------+
+                                       ^
+                                       |  Heartbeats & REST API
+     +---------------------------------+---------------------------------+
+     |                                 |                                 |
++----+-------------------+   +---------+-----------+   +-----------------+---+
+| NDI Discovery Server   |   | NDI Signal Generator|   | NDI Stream      |
+| (Port 5959)            |   | (ndi-generator)     |   | Processor       |
+| Stream Lookup Registry |   | Test Pattern Source |   | (ndi-processor) |
++------------------------+   +---------------------+   +-----------------+---+
+                                                                 |
+                                                       +---------+-----------+
+                                                       | NDI Stream          |
+                                                       | Health Monitor      |
+                                                       | (ndi-monitor)       |
+                                                       +---------------------+
 ```
 
 ---
 
-## Updating Code on GitHub Later
-Whenever you make updates to your project:
-1. `git add .`
-2. `git commit -m "Describe your changes"`
-3. `git push`
+## 🚀 Services Overview
+
+1. **Central Manager (`central-manager/`)**
+   - **Port**: `8000`
+   - **Role**: Central control plane, web dashboard, and service registry.
+   - **Endpoints**:
+     - `GET /`: Interactive web dashboard showing stream health and active nodes.
+     - `GET /api/v1/services`: List registered NDI services.
+     - `POST /api/v1/services/register`: Register a new NDI node.
+     - `POST /api/v1/services/{id}/heartbeat`: Ingest heartbeat telemetry and metrics.
+
+2. **NDI Discovery Server (`ndi-discovery-server/`)**
+   - **Port**: `5959` (TCP & UDP)
+   - **Role**: Centralized NDI directory service allowing cross-subnet stream lookup without mDNS multicast reliance.
+
+3. **NDI Signal Generator (`ndi-generator/`)**
+   - **Port**: `8001`
+   - **Role**: Containerized broadcast test pattern video generator (SMPTE bars, 1080p60/720p60 profiles).
+
+4. **NDI Stream Processor Gateway (`ndi-processor/`)**
+   - **Port**: `8002`
+   - **Role**: Transcoding and MJPEG preview feed generation for NDI stream ingest/egress.
+
+5. **NDI Stream Health Monitor (`ndi-monitor/`)**
+   - **Port**: `8003`
+   - **Role**: Continuous latency, frame drop, and FPS health monitoring for broadcast production feeds.
+
+---
+
+## ⚡ Getting Started
+
+### Prerequisites
+- [Docker](https://docs.docker.com/get-docker/)
+- [Docker Compose](https://docs.docker.com/compose/) v2+
+
+### Running the Stack
+
+To start the full NDI broadcast container group:
+
+```bash
+docker compose up -d --build
+```
+
+### Accessing the Dashboard & APIs
+- **Central Manager Dashboard**: [http://localhost:8000](http://localhost:8000)
+- **Central Manager Health Check**: `curl http://localhost:8000/api/v1/health`
+- **Stream Processor Preview**: `http://localhost:8002/preview.mjpeg`
+- **Stream Health Monitor API**: `http://localhost:8003/api/v1/metrics`
+
+---
+
+## 🧪 Testing and Verification
+
+Run the integration test suite and stack validator:
+
+```bash
+python3 -m unittest discover -s tests
+python3 scripts/verify_ndi_stack.py
+```
