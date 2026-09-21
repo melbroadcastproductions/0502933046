@@ -8,6 +8,30 @@ namespace NdiWorker
         private const string LibNameLinux = "libndi.so.5";
         private const string LibNameWin = "Processing.NDI.Lib.x64.dll";
 
+        static NdiNative()
+        {
+            NativeLibrary.SetDllImportResolver(typeof(NdiNative).Assembly, ResolveNdiLibrary);
+        }
+
+        private static IntPtr ResolveNdiLibrary(string libraryName, System.Reflection.Assembly assembly, DllImportSearchPath? searchPath)
+        {
+            if (libraryName == LibNameLinux || libraryName == LibNameWin || libraryName.Contains("ndi"))
+            {
+                string[] candidates = OperatingSystem.IsWindows()
+                    ? new[] { "Processing.NDI.Lib.x64.dll", "Processing.NDI.Lib.x86.dll", "Processing.NDI.Lib.dll" }
+                    : new[] { "libndi.so.5", "libndi.so.4", "libndi.so", "/usr/lib/libndi.so.5", "/usr/local/lib/libndi.so.5" };
+
+                foreach (var candidate in candidates)
+                {
+                    if (NativeLibrary.TryLoad(candidate, assembly, searchPath, out var handle))
+                    {
+                        return handle;
+                    }
+                }
+            }
+            return IntPtr.Zero;
+        }
+
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
         public struct NDIlib_send_create_t
         {

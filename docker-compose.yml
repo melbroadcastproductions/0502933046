@@ -20,7 +20,10 @@ services:
       dockerfile: Dockerfile
     image: ndi-worker:latest
     container_name: ndi-worker-demo
-    network_mode: "host"
+    ports:
+      - "8080:8080"
+      - "5004:5004/udp"
+      - "5353:5353/udp"
     labels:
       - "type=ndi-worker"
     environment:

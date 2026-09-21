@@ -259,7 +259,19 @@ namespace NdiManager.Services
                             $"TALLY_STATE={config.TallyState}",
                             $"UMD_TEXT={config.UmdText}"
                         },
-                        HostConfig = new HostConfig { NetworkMode = "host" }
+                        ExposedPorts = new Dictionary<string, EmptyStruct>
+                        {
+                            [$"{config.HealthPort}/tcp"] = default,
+                            [$"{config.DestPort}/udp"] = default
+                        },
+                        HostConfig = new HostConfig
+                        {
+                            PortBindings = new Dictionary<string, IList<PortBinding>>
+                            {
+                                [$"{config.HealthPort}/tcp"] = new List<PortBinding> { new PortBinding { HostPort = config.HealthPort.ToString() } },
+                                [$"{config.DestPort}/udp"] = new List<PortBinding> { new PortBinding { HostPort = config.DestPort.ToString() } }
+                            }
+                        }
                     });
 
                     await _dockerClient.Containers.StartContainerAsync(response.ID, new ContainerStartParameters());
