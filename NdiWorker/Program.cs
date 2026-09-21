@@ -132,6 +132,37 @@ namespace NdiWorker
                     }
                     break;
 
+                case "quadsplit":
+                    var subResolutions = Resolution.Split('x');
+                    int subW = int.TryParse(subResolutions[0], out var wVal) ? wVal / 2 : 960;
+                    int subH = subResolutions.Length > 1 && int.TryParse(subResolutions[1], out var hVal) ? hVal / 2 : 540;
+
+                    string[] quadSources = !string.IsNullOrWhiteSpace(SourceUri) ? SourceUri.Split(',') : Array.Empty<string>();
+                    var sbInputs = new StringBuilder();
+                    var sbFilter = new StringBuilder("-filter_complex \"");
+
+                    string[] fallbackPatterns = new[] { "smptebars", "testsrc2", "rgbtestsrc", "mandelbrot" };
+
+                    for (int i = 0; i < 4; i++)
+                    {
+                        if (i < quadSources.Length && !string.IsNullOrWhiteSpace(quadSources[i]))
+                        {
+                            sbInputs.Append($"-i \"{quadSources[i].Trim()}\" ");
+                        }
+                        else
+                        {
+                            sbInputs.Append($"-f lavfi -i \"{fallbackPatterns[i]}=size={subW}x{subH}:rate={Fps}\" ");
+                        }
+                        sbFilter.Append($"[{i}:v]scale={subW}:{subH}[v{i}]; ");
+                    }
+
+                    sbInputs.Append($"-f lavfi -i \"{asource}\"");
+                    sbFilter.Append($"[v0][v1][v2][v3]xstack=inputs=4:layout=0_0|w0_0|0_h0|w0_h0[quad]; [quad]{vfilter}[out]\" -map \"[out]\" -map 4:a");
+
+                    inputArgs = sbInputs.ToString();
+                    filterArgs = sbFilter.ToString();
+                    break;
+
                 case "colorbars":
                 default:
                     string vsource = Pattern switch

@@ -8,7 +8,7 @@ namespace NdiManager.Models
         public string StreamName { get; set; } = "NDI-Stream-01";
 
         [JsonPropertyName("source_type")]
-        public string SourceType { get; set; } = "ColorBars"; // ColorBars, Picture, VideoClip, WebPage
+        public string SourceType { get; set; } = "ColorBars"; // ColorBars, Picture, VideoClip, WebPage, QuadSplit
 
         [JsonPropertyName("source_uri")]
         public string SourceUri { get; set; } = "";

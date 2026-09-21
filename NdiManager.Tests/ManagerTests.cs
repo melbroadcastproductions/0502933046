@@ -72,6 +72,27 @@ namespace NdiManager.Tests
         }
 
         [Fact]
+        public async Task Worker_QuadSplitConfig_Succeeds()
+        {
+            var manager = new NdiWorkerManager();
+            var config = new WorkerConfig
+            {
+                StreamName = "QUADSPLIT-01",
+                SourceType = "QuadSplit",
+                SourceUri = "udp://239.255.0.1:5001,udp://239.255.0.1:5002,udp://239.255.0.1:5003,udp://239.255.0.1:5004",
+                Resolution = "1920x1080",
+                Fps = "30"
+            };
+
+            var created = await manager.CreateWorkerAsync(config);
+            Assert.NotNull(created);
+            Assert.Equal("QuadSplit", created.Config.SourceType);
+            Assert.Contains("5001", created.Config.SourceUri);
+
+            await manager.DeleteWorkerAsync(created.Id);
+        }
+
+        [Fact]
         public async Task TallyController_SetTally_UpdatesWorkerTallyState()
         {
             var manager = new NdiWorkerManager();
