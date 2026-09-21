@@ -1,6 +1,13 @@
 version: '3.8'
 
 services:
+  ndi-discovery:
+    image: ndi-worker:latest
+    container_name: ndi-discovery-server
+    ports:
+      - "5959:5959/tcp"
+    restart: unless-stopped
+
   ndi-manager:
     build:
       context: ./NdiManager
@@ -14,6 +21,7 @@ services:
       - WORKER_IMAGE=ndi-worker:latest
     restart: unless-stopped
     depends_on:
+      - ndi-discovery
       - ndi-worker-demo
 
   ndi-worker-demo:
