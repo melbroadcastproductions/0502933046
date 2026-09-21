@@ -365,17 +365,8 @@ namespace NdiWorker
             try
             {
                 using var listener = new HttpListener();
-                try
-                {
-                    listener.Prefixes.Add($"http://*:{port}/");
-                    listener.Start();
-                }
-                catch
-                {
-                    listener.Prefixes.Clear();
-                    listener.Prefixes.Add($"http://localhost:{port}/");
-                    listener.Start();
-                }
+                listener.Prefixes.Add($"http://*:{port}/");
+                listener.Start();
                 Console.WriteLine($"[NdiWorker] Health HTTP listener listening on port {port}");
 
                 while (!token.IsCancellationRequested)
