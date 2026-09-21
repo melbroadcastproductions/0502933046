@@ -57,50 +57,104 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function renderQuadGrid(workers) {
         quadGrid.innerHTML = "";
+
+        // Build list of all available stream sources for the selector dropdown
+        const availableSourcesOptions = [
+            `<option value="">-- Select Input Source --</option>`,
+            `<optgroup label="Active Worker NDI Streams">`,
+            ...workers.map(w => `<option value="${escapeHtml(w.config.stream_name)}">${escapeHtml(w.config.stream_name)} [${w.config.source_type}]</option>`),
+            `</optgroup>`,
+            `<optgroup label="Test Patterns & Generator Feeds">`,
+            `<option value="smptebars">Color Bars (SMPTE)</option>`,
+            `<option value="testsrc2">Color Bars (Test Pattern 2)</option>`,
+            `<option value="rgbtestsrc">RGB Test Source</option>`,
+            `<option value="mandelbrot">Mandelbrot Motion Pattern</option>`,
+            `</optgroup>`
+        ].join("");
+
         for (let i = 0; i < 4; i++) {
             const w = workers[i];
-            if (w) {
-                const tallyClass = w.config.tally_state === "Program" ? "tally-program"
-                                 : w.config.tally_state === "Preview" ? "tally-preview" : "";
+            const tallyClass = w && w.config.tally_state === "Program" ? "tally-program"
+                             : w && w.config.tally_state === "Preview" ? "tally-preview" : "";
 
-                const tallyBadgeClass = w.config.tally_state === "Program" ? "tally-badge-program"
-                                      : w.config.tally_state === "Preview" ? "tally-badge-preview" : "tally-badge-off";
+            const tallyBadgeClass = w && w.config.tally_state === "Program" ? "tally-badge-program"
+                                  : w && w.config.tally_state === "Preview" ? "tally-badge-preview" : "tally-badge-off";
 
-                quadGrid.innerHTML += `
-                    <div class="quad-tile ${tallyClass}">
-                        <div class="quad-screen">
-                            <i class="fa-solid fa-broadcast-tower"></i>
-                            <span style="font-weight:700; color:#fff;">${escapeHtml(w.config.stream_name)}</span>
-                            <span>${w.config.source_type} | ${w.config.resolution} @ ${w.config.fps}fps</span>
-                            <div class="tally-controls">
-                                <button class="tally-btn ${w.config.tally_state === 'Program' ? 'active-pgm' : ''}" onclick="setTally('${w.id}', 'Program')">PGM</button>
-                                <button class="tally-btn ${w.config.tally_state === 'Preview' ? 'active-pvw' : ''}" onclick="setTally('${w.id}', 'Preview')">PVW</button>
-                                <button class="tally-btn" onclick="setTally('${w.id}', 'Off')">OFF</button>
-                            </div>
+            const currentStreamName = w ? w.config.stream_name : `CAM ${i + 1}`;
+            const currentSubText = w ? `udp://${w.config.dest_ip}:${w.config.dest_port}` : "NO FEED";
+
+            quadGrid.innerHTML += `
+                <div class="quad-tile ${w ? tallyClass : 'empty'}">
+                    <div class="quad-screen">
+                        <div style="display:flex; align-items:center; justify-content:space-between; width:100%; padding:0 0.5rem; margin-bottom:0.5rem;">
+                            <span style="font-weight:700; color:#40a9ff; font-size:0.9rem;"><i class="fa-solid fa-tv"></i> QUAD ${i + 1} INPUT</span>
+                            <select class="quad-select" style="background:#1f1f1f; color:#fff; border:1px solid #434343; border-radius:4px; padding:2px 6px; font-size:0.8rem; max-width:200px;" onchange="assignQuadSource(${i}, this.value)">
+                                ${availableSourcesOptions}
+                            </select>
                         </div>
-                        <div class="umd-bar">
-                            <span class="umd-label">${escapeHtml(w.config.umd_text || w.config.stream_name)}</span>
-                            <span class="tally-badge ${tallyBadgeClass}">${w.config.tally_state}</span>
-                            <span class="umd-sub">udp://${w.config.dest_ip}:${w.config.dest_port}</span>
-                        </div>
+                        <i class="fa-solid fa-broadcast-tower"></i>
+                        <span style="font-weight:700; color:#fff;">${escapeHtml(currentStreamName)}</span>
+                        <span>${w ? `${w.config.source_type} | ${w.config.resolution}` : 'Select input source above'}</span>
+                        ${w ? `
+                        <div class="tally-controls">
+                            <button class="tally-btn ${w.config.tally_state === 'Program' ? 'active-pgm' : ''}" onclick="setTally('${w.id}', 'Program')">PGM</button>
+                            <button class="tally-btn ${w.config.tally_state === 'Preview' ? 'active-pvw' : ''}" onclick="setTally('${w.id}', 'Preview')">PVW</button>
+                            <button class="tally-btn" onclick="setTally('${w.id}', 'Off')">OFF</button>
+                        </div>` : ''}
                     </div>
-                `;
-            } else {
-                quadGrid.innerHTML += `
-                    <div class="quad-tile empty">
-                        <div class="quad-screen">
-                            <i class="fa-solid fa-tv"></i>
-                            <span>Quad ${i + 1}: Unassigned Slot</span>
-                        </div>
-                        <div class="umd-bar">
-                            <span class="umd-label">CAM ${i + 1}</span>
-                            <span class="umd-sub">NO FEED</span>
-                        </div>
+                    <div class="umd-bar">
+                        <span class="umd-label">${escapeHtml(w ? (w.config.umd_text || w.config.stream_name) : `CAM ${i + 1}`)}</span>
+                        <span class="tally-badge ${tallyBadgeClass}">${w ? w.config.tally_state : 'OFF'}</span>
+                        <span class="umd-sub">${currentSubText}</span>
                     </div>
-                `;
-            }
+                </div>
+            `;
         }
     }
+
+    window.assignQuadSource = async (quadIndex, selectedSource) => {
+        if (!selectedSource) return;
+        // Search if a QuadSplit worker already exists, or create/update QuadSplit worker with input selection
+        const res = await fetch("/api/workers");
+        if (res.ok) {
+            const workers = await res.json();
+            let quadWorker = workers.find(w => w.config.source_type === "QuadSplit");
+            let currentSources = quadWorker && quadWorker.config.source_uri ? quadWorker.config.source_uri.split(',') : ["smptebars", "testsrc2", "rgbtestsrc", "mandelbrot"];
+
+            currentSources[quadIndex] = selectedSource;
+            const updatedSourcesUri = currentSources.join(',');
+
+            if (quadWorker) {
+                // Restart Quad worker with updated inputs
+                await fetch(`/api/workers/${quadWorker.id}`, { method: "DELETE" });
+            }
+
+            await fetch("/api/workers", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    stream_name: "NDI-QUAD-MULTIVIEWER-01",
+                    source_type: "QuadSplit",
+                    source_uri: updatedSourcesUri,
+                    discovery_mode: "CentralServer",
+                    discovery_server_ip: "10.10.1.1",
+                    discovery_server_port: 5959,
+                    resolution: "1920x1080",
+                    fps: "30",
+                    tally_state: "Program",
+                    umd_text: `QUAD MULTIVIEWER`,
+                    audio_freq: 1000,
+                    overlay_text: "LIVE 4-WAY MULTIVIEWER FEED",
+                    dest_ip: "239.255.0.1",
+                    dest_port: 5009,
+                    health_port: 8089
+                })
+            });
+
+            fetchWorkers();
+            fetchMetrics();
+        }
+    };
 
     function renderWorkerGrid(workers) {
         if (!workers || workers.length === 0) {
