@@ -25,7 +25,7 @@ namespace NdiWorker
 
         // NDI Discovery & Tally / UMD parameters
         private static readonly string DiscoveryMode = Environment.GetEnvironmentVariable("DISCOVERY_MODE") ?? "Bonjour"; // Bonjour or CentralServer
-        private static readonly string DiscoveryServerIp = Environment.GetEnvironmentVariable("DISCOVERY_SERVER_IP") ?? "127.0.0.1";
+        private static readonly string DiscoveryServerIp = Environment.GetEnvironmentVariable("DISCOVERY_SERVER_IP") ?? "10.10.1.1";
         private static readonly string DiscoveryServerPort = Environment.GetEnvironmentVariable("DISCOVERY_SERVER_PORT") ?? "5959";
         private static string TallyState = Environment.GetEnvironmentVariable("TALLY_STATE") ?? "Off"; // Off, Program, Preview
         private static readonly string UmdText = Environment.GetEnvironmentVariable("UMD_TEXT") ?? StreamName;

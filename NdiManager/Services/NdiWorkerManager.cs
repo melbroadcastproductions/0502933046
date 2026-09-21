@@ -82,7 +82,8 @@ namespace NdiManager.Services
             {
                 var w = kvp.Value;
                 bool isRunning = w.Process != null && !w.Process.HasExited;
-                object? health = isRunning ? await FetchHealthAsync(w.Config.HealthPort) : null;
+                string targetHost = string.IsNullOrEmpty(w.Config.DestIp) || w.Config.DestIp.StartsWith("239.") ? "10.10.1.1" : w.Config.DestIp;
+                object? health = isRunning ? await FetchHealthAsync(w.Config.HealthPort, targetHost) : null;
 
                 result.Add(new WorkerResponse
                 {
@@ -108,7 +109,8 @@ namespace NdiManager.Services
             };
 
             bool isRunning = c.State == "running";
-            object? health = isRunning ? await FetchHealthAsync(config.HealthPort) : null;
+            string targetHost = string.IsNullOrEmpty(config.DestIp) || config.DestIp.StartsWith("239.") ? "10.10.1.1" : config.DestIp;
+            object? health = isRunning ? await FetchHealthAsync(config.HealthPort, targetHost) : null;
 
             return new WorkerResponse
             {
@@ -123,13 +125,21 @@ namespace NdiManager.Services
             };
         }
 
-        private async Task<object?> FetchHealthAsync(int port)
+        private async Task<object?> FetchHealthAsync(int port, string host = "10.10.1.1")
         {
             try {
-                var json = await _httpClient.GetStringAsync($"http://127.0.0.1:{port}/health");
+                var json = await _httpClient.GetStringAsync($"http://{host}:{port}/health");
                 return JsonSerializer.Deserialize<object>(json);
             }
             catch {
+                if (host != "127.0.0.1")
+                {
+                    try {
+                        var json = await _httpClient.GetStringAsync($"http://127.0.0.1:{port}/health");
+                        return JsonSerializer.Deserialize<object>(json);
+                    }
+                    catch { return null; }
+                }
                 return null;
             }
         }
@@ -296,9 +306,9 @@ namespace NdiManager.Services
                 if (state.Process != null && !state.Process.HasExited)
                 {
                     try { state.Process.Kill(); } catch { }
-                    state.Process = null;
-                    return true;
                 }
+                state.Process = null;
+                return true;
             }
             return false;
         }

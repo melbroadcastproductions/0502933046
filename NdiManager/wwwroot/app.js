@@ -168,7 +168,7 @@ document.addEventListener("DOMContentLoaded", () => {
             source_type: document.getElementById("sourceType").value,
             source_uri: document.getElementById("sourceUri").value,
             discovery_mode: document.getElementById("discoveryMode").value,
-            discovery_server_ip: discIpPort[0] || "127.0.0.1",
+            discovery_server_ip: discIpPort[0] || "10.10.1.1",
             discovery_server_port: parseInt(discIpPort[1] || "5959"),
             resolution: document.getElementById("resolution").value,
             fps: document.getElementById("fps").value,

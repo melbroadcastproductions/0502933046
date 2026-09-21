@@ -41,7 +41,7 @@ namespace NdiManager.Models
         public string DiscoveryMode { get; set; } = "Bonjour"; // Bonjour or CentralServer
 
         [JsonPropertyName("discovery_server_ip")]
-        public string DiscoveryServerIp { get; set; } = "127.0.0.1";
+        public string DiscoveryServerIp { get; set; } = "10.10.1.1";
 
         [JsonPropertyName("discovery_server_port")]
         public int DiscoveryServerPort { get; set; } = 5959;
