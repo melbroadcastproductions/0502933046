@@ -1,6 +1,12 @@
-version: "3.8"
-
 services:
+  ndi-discovery-server:
+    image: alpine:latest
+    container_name: ndi-discovery-server
+    command: sh -c "echo 'NDI Discovery Server active on port 5959' && nc -lk -p 5959"
+    ports:
+      - "5959:5959"
+    restart: unless-stopped
+
   ndi-manager:
     build:
       context: ./NdiManager
@@ -14,6 +20,7 @@ services:
       - WORKER_IMAGE=ndi-worker:latest
     restart: unless-stopped
     depends_on:
+      - ndi-discovery-server
       - ndi-worker-demo
 
   ndi-worker-demo:
@@ -28,8 +35,8 @@ services:
       - STREAM_NAME=NDI-FINANCIAL-01
       - SOURCE_TYPE=WebPage
       - SOURCE_URI=https://finance.yahoo.com
-      - DISCOVERY_MODE=Bonjour
-      - DISCOVERY_SERVER_IP=127.0.0.1
+      - DISCOVERY_MODE=CentralServer
+      - DISCOVERY_SERVER_IP=10.10.1.1
       - DISCOVERY_SERVER_PORT=5959
       - TALLY_STATE=Program
       - UMD_TEXT=CAM 1 FINANCIAL

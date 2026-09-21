@@ -31,6 +31,19 @@ namespace NdiManager.Services
         }
 
         private static readonly ConcurrentDictionary<string, ProcessWorkerState> _processWorkers = new();
+        private static readonly object _logLock = new object();
+
+        private static void AppendLog(string filePath, string text)
+        {
+            try
+            {
+                lock (_logLock)
+                {
+                    File.AppendAllText(filePath, text + "\n");
+                }
+            }
+            catch { }
+        }
 
         public NdiWorkerManager()
         {
@@ -236,8 +249,8 @@ namespace NdiManager.Services
             var proc = Process.Start(psi);
             if (proc != null)
             {
-                proc.OutputDataReceived += (s, e) => { if (e.Data != null) File.AppendAllText(logPath, e.Data + "\n"); };
-                proc.ErrorDataReceived += (s, e) => { if (e.Data != null) File.AppendAllText(logPath, e.Data + "\n"); };
+                proc.OutputDataReceived += (s, e) => { if (e.Data != null) AppendLog(logPath, e.Data); };
+                proc.ErrorDataReceived += (s, e) => { if (e.Data != null) AppendLog(logPath, e.Data); };
                 proc.BeginOutputReadLine();
                 proc.BeginErrorReadLine();
             }
@@ -357,7 +370,11 @@ namespace NdiManager.Services
 
             if (_processWorkers.TryGetValue(workerId, out var state) && File.Exists(state.LogFilePath))
             {
-                var content = await File.ReadAllLinesAsync(state.LogFilePath);
+                string[] content;
+                lock (_logLock)
+                {
+                    content = File.ReadAllLines(state.LogFilePath);
+                }
                 return string.Join("\n", content.TakeLast(lines));
             }
 
