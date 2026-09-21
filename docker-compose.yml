@@ -20,6 +20,7 @@ services:
       dockerfile: Dockerfile
     image: ndi-worker:latest
     container_name: ndi-worker-demo
+    network_mode: "host"
     labels:
       - "type=ndi-worker"
     environment:
@@ -39,7 +40,4 @@ services:
       - DEST_IP=239.255.0.1
       - DEST_PORT=5004
       - HEALTH_PORT=8080
-    ports:
-      - "8080:8080"
-      - "5004:5004/udp"
     restart: unless-stopped
