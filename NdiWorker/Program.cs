@@ -59,8 +59,38 @@ namespace NdiWorker
             // Start Health HTTP Listener
             var healthTask = RunHealthServerAsync(HealthPort, cts.Token);
 
-            // Start FFmpeg process
-            StartFfmpegPipeline();
+            // Configure NDI Central Discovery / mDNS ini file
+            ConfigureNdiDiscovery();
+
+            // Initialize Native NDI Sender
+            bool ndiInitialized = false;
+            IntPtr pNdiSender = IntPtr.Zero;
+            try
+            {
+                ndiInitialized = NdiNative.NDIlib_initialize();
+                if (ndiInitialized)
+                {
+                    var sendSettings = new NdiNative.NDIlib_send_create_t
+                    {
+                        p_ndi_name = StreamName,
+                        p_groups = string.Empty,
+                        clock_video = true,
+                        clock_audio = false
+                    };
+                    pNdiSender = NdiNative.NDIlib_send_create(ref sendSettings);
+                    if (pNdiSender != IntPtr.Zero)
+                    {
+                        Console.WriteLine($"[NdiWorker] Native NDI Sender initialized: '{StreamName}'");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[NdiWorker] Native NDI SDK initialization note: {ex.Message}");
+            }
+
+            // Start FFmpeg process (pass pNdiSender for rawvideo BGRA frame streaming if native sender active)
+            StartFfmpegPipeline(pNdiSender, cts.Token);
 
             try
             {
@@ -68,11 +98,16 @@ namespace NdiWorker
             }
             catch (TaskCanceledException) { }
 
+            if (pNdiSender != IntPtr.Zero)
+            {
+                try { NdiNative.NDIlib_send_destroy(pNdiSender); } catch { }
+            }
+
             StopFfmpegPipeline();
             Console.WriteLine("[NdiWorker] Shutdown complete.");
         }
 
-        private static void StartFfmpegPipeline()
+        private static void StartFfmpegPipeline(IntPtr pNdiSender, CancellationToken token)
         {
             string inputArgs = "";
             string filterArgs = "";
@@ -179,15 +214,19 @@ namespace NdiWorker
                     break;
             }
 
-            var arguments = $"-re {inputArgs} {filterArgs} -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -g {Fps} -c:a aac -b:a 128k -f mpegts \"udp://{DestIp}:{DestPort}?pkt_size=1316&ttl=1\"";
+            bool useNativeNdi = pNdiSender != IntPtr.Zero;
 
-            Console.WriteLine($"[NdiWorker] Launching FFmpeg pipeline: {arguments}");
+            string arguments = useNativeNdi
+                ? $"-re {inputArgs} {filterArgs} -pix_fmt bgra -f rawvideo pipe:1"
+                : $"-re {inputArgs} {filterArgs} -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -g {Fps} -c:a aac -b:a 128k -f mpegts \"udp://{DestIp}:{DestPort}?pkt_size=1316&ttl=1\"";
+
+            Console.WriteLine($"[NdiWorker] Launching FFmpeg pipeline (Native NDI Mode: {useNativeNdi}): ffmpeg {arguments}");
 
             var psi = new ProcessStartInfo
             {
                 FileName = "ffmpeg",
                 Arguments = arguments,
-                RedirectStandardOutput = true,
+                RedirectStandardOutput = useNativeNdi,
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true
@@ -206,11 +245,101 @@ namespace NdiWorker
                         }
                     };
                     _ffmpegProcess.BeginErrorReadLine();
+
+                    if (useNativeNdi)
+                    {
+                        Task.Run(() => RunNdiFrameSendingLoop(pNdiSender, _ffmpegProcess.StandardOutput.BaseStream, token), token);
+                    }
                 }
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"[NdiWorker] Note: FFmpeg launch status: {ex.Message}");
+            }
+        }
+
+        private static void RunNdiFrameSendingLoop(IntPtr pNdiSender, Stream rawStream, CancellationToken token)
+        {
+            var resParts = Resolution.Split('x');
+            int xres = int.TryParse(resParts[0], out var w) ? w : 1920;
+            int yres = resParts.Length > 1 && int.TryParse(resParts[1], out var h) ? h : 1080;
+            int frameRateNumerator = int.TryParse(Fps, out var f) ? f : 30;
+            int frameRateDenominator = 1;
+            int strideBytes = xres * 4;
+            int frameSizeBytes = strideBytes * yres;
+
+            byte[] buffer = new byte[frameSizeBytes];
+
+            Console.WriteLine($"[NdiWorker] NDI Frame Sending Loop started ({xres}x{yres} BGRA @ {frameRateNumerator}fps, frame size: {frameSizeBytes} bytes)");
+
+            while (!token.IsCancellationRequested)
+            {
+                int bytesRead = 0;
+                while (bytesRead < frameSizeBytes && !token.IsCancellationRequested)
+                {
+                    int n = rawStream.Read(buffer, bytesRead, frameSizeBytes - bytesRead);
+                    if (n <= 0) break;
+                    bytesRead += n;
+                }
+
+                if (bytesRead < frameSizeBytes)
+                {
+                    Console.WriteLine("[NdiWorker] Stream ended or read incomplete frame, exiting NDI loop.");
+                    break;
+                }
+
+                unsafe
+                {
+                    fixed (byte* pData = buffer)
+                    {
+                        var videoFrame = new NdiNative.NDIlib_video_frame_v2_t
+                        {
+                            xres = xres,
+                            yres = yres,
+                            FourCC = NdiNative.NDIlib_FourCC_video_type_e.NDIlib_FourCC_video_type_BGRA,
+                            frame_rate_N = frameRateNumerator,
+                            frame_rate_D = frameRateDenominator,
+                            picture_aspect_ratio = (float)xres / yres,
+                            frame_format_type = NdiNative.NDIlib_frame_format_type_e.NDIlib_frame_format_type_progressive,
+                            timecode = 9223372036854775807L, // NDIlib_send_timecode_synthesize (int64_max)
+                            p_data = (IntPtr)pData,
+                            line_stride_in_bytes = strideBytes,
+                            p_metadata = IntPtr.Zero,
+                            timestamp = 0
+                        };
+
+                        NdiNative.NDIlib_send_send_video_v2(pNdiSender, ref videoFrame);
+                    }
+                }
+            }
+        }
+
+        private static void ConfigureNdiDiscovery()
+        {
+            if (DiscoveryMode.Equals("CentralServer", StringComparison.OrdinalIgnoreCase))
+            {
+                string iniContent = $"[Network]\ndiscovery={DiscoveryServerIp}:{DiscoveryServerPort}\n";
+                Console.WriteLine($"[NdiWorker] Configuring NDI Discovery Central Server: {DiscoveryServerIp}:{DiscoveryServerPort}");
+                try
+                {
+                    Directory.CreateDirectory("/etc/ndi");
+                    File.WriteAllText("/etc/ndi/ndi.ini", iniContent);
+                }
+                catch
+                {
+                    try
+                    {
+                        File.WriteAllText("ndi.ini", iniContent);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[NdiWorker] Could not write NDI ini file: {ex.Message}");
+                    }
+                }
+            }
+            else
+            {
+                Console.WriteLine("[NdiWorker] NDI Discovery configured for mDNS/Bonjour multicast.");
             }
         }
 

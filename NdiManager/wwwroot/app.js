@@ -156,7 +156,13 @@ document.addEventListener("DOMContentLoaded", () => {
         fetchWorkers();
     };
 
-    openModalBtn.addEventListener("click", () => spawnModal.classList.add("active"));
+    openModalBtn.addEventListener("click", () => {
+        // Auto-increment health/dest ports dynamically based on running count
+        const existingCount = document.querySelectorAll(".worker-card").length;
+        document.getElementById("healthPort").value = 8080 + existingCount;
+        document.getElementById("destPort").value = 5004 + existingCount;
+        spawnModal.classList.add("active");
+    });
     closeModalBtn.addEventListener("click", () => spawnModal.classList.remove("active"));
     cancelModalBtn.addEventListener("click", () => spawnModal.classList.remove("active"));
 

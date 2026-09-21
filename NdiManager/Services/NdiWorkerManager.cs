@@ -189,6 +189,24 @@ namespace NdiManager.Services
 
         public async Task<WorkerResponse> CreateWorkerAsync(WorkerConfig config)
         {
+            var existingWorkers = await ListWorkersAsync();
+
+            // Auto-increment health_port if default or colliding
+            int usedHealthPort = config.HealthPort;
+            while (existingWorkers.Any(w => w.Config.HealthPort == usedHealthPort))
+            {
+                usedHealthPort++;
+            }
+            config.HealthPort = usedHealthPort;
+
+            // Auto-increment dest_port if default or colliding
+            int usedDestPort = config.DestPort;
+            while (existingWorkers.Any(w => w.Config.DestPort == usedDestPort))
+            {
+                usedDestPort++;
+            }
+            config.DestPort = usedDestPort;
+
             string id = $"ndi-{Guid.NewGuid().ToString("N")[..8]}";
             string containerName = $"ndi-worker-{config.StreamName.ToLower().Replace(' ', '-')}-{Guid.NewGuid().ToString("N")[..4]}";
 
