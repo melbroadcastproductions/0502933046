@@ -27,7 +27,7 @@ namespace NdiWorker
 
         // NDI Discovery & Tally / UMD parameters
         private static readonly string DiscoveryMode = Environment.GetEnvironmentVariable("DISCOVERY_MODE") ?? "Bonjour"; // Bonjour or CentralServer
-        private static readonly string DiscoveryServerIp = Environment.GetEnvironmentVariable("DISCOVERY_SERVER_IP") ?? "10.10.1.1";
+        private static readonly string DiscoveryServerIp = Environment.GetEnvironmentVariable("DISCOVERY_SERVER_IP") ?? "127.0.0.1";
         private static readonly string DiscoveryServerPort = Environment.GetEnvironmentVariable("DISCOVERY_SERVER_PORT") ?? "5959";
         private static string TallyState = Environment.GetEnvironmentVariable("TALLY_STATE") ?? "Off"; // Off, Program, Preview
         private static readonly string UmdText = Environment.GetEnvironmentVariable("UMD_TEXT") ?? StreamName;
@@ -99,7 +99,7 @@ namespace NdiWorker
             // Start Health HTTP Listener
             var healthTask = RunHealthServerAsync(HealthPort, singleCts.Token);
 
-            // Configure NDI Central Discovery / mDNS ini file
+            // Configure NDI Central Discovery / mDNS ini file BEFORE NDI SDK initialization
             ConfigureNdiDiscovery();
 
             // Initialize Native NDI Sender
@@ -108,6 +108,7 @@ namespace NdiWorker
             try
             {
                 ndiInitialized = NdiNative.NDIlib_initialize();
+                Console.WriteLine($"[NdiWorker] NDIlib_initialize() status: {ndiInitialized}");
                 if (ndiInitialized)
                 {
                     var sendSettings = new NdiNative.NDIlib_send_create_t
@@ -120,7 +121,11 @@ namespace NdiWorker
                     pNdiSender = NdiNative.NDIlib_send_create(ref sendSettings);
                     if (pNdiSender != IntPtr.Zero)
                     {
-                        Console.WriteLine($"[NdiWorker] Native NDI Sender initialized: '{StreamName}'");
+                        Console.WriteLine($"[NdiWorker] Native NDI Sender initialized: '{StreamName}' (Handle: {pNdiSender})");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"[NdiWorker] NDIlib_send_create failed for '{StreamName}'");
                     }
                 }
             }

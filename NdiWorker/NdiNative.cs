@@ -32,10 +32,12 @@ namespace NdiWorker
             return IntPtr.Zero;
         }
 
-        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+        [StructLayout(LayoutKind.Sequential)]
         public struct NDIlib_send_create_t
         {
+            [MarshalAs(UnmanagedType.LPUTF8Str)]
             public string p_ndi_name;
+            [MarshalAs(UnmanagedType.LPUTF8Str)]
             public string p_groups;
             [MarshalAs(UnmanagedType.U1)]
             public bool clock_video;

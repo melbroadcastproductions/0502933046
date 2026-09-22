@@ -40,7 +40,7 @@ services:
       - SOURCE_TYPE=WebPage
       - SOURCE_URI=https://finance.yahoo.com
       - DISCOVERY_MODE=CentralServer
-      - DISCOVERY_SERVER_IP=10.10.1.1
+      - DISCOVERY_SERVER_IP=127.0.0.1
       - DISCOVERY_SERVER_PORT=5959
       - TALLY_STATE=Program
       - UMD_TEXT=CAM 1 FINANCIAL
