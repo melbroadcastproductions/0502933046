@@ -18,7 +18,7 @@ namespace NdiWorker
             if (libraryName == LibNameLinux || libraryName == LibNameWin || libraryName.Contains("ndi"))
             {
                 string[] candidates = OperatingSystem.IsWindows()
-                    ? new[] { "Processing.NDI.Lib.x64.dll", "Processing.NDI.Lib.x86.dll", "Processing.NDI.Lib.dll" }
+                    ? new[] { "Processing_NDI_Lib_Advanced_x64.dll", "Processing.NDI.Lib.x64.dll", "Processing_NDI_Lib_Advanced_x86.dll", "Processing.NDI.Lib.x86.dll", "Processing.NDI.Lib.dll" }
                     : new[] { "libndi.so.5", "libndi.so.4", "libndi.so", "/usr/lib/libndi.so.5", "/usr/local/lib/libndi.so.5" };
 
                 foreach (var candidate in candidates)
