@@ -5,8 +5,7 @@ namespace NdiWorker
 {
     public static class NdiNative
     {
-        private const string LibNameLinux = "libndi.so.5";
-        private const string LibNameWin = "Processing.NDI.Lib.x64.dll";
+        private const string NdiLibName = "ndi";
 
         static NdiNative()
         {
@@ -15,19 +14,52 @@ namespace NdiWorker
 
         private static IntPtr ResolveNdiLibrary(string libraryName, System.Reflection.Assembly assembly, DllImportSearchPath? searchPath)
         {
-            if (libraryName == LibNameLinux || libraryName == LibNameWin || libraryName.Contains("ndi"))
+            if (libraryName == NdiLibName || libraryName.Contains("ndi", StringComparison.OrdinalIgnoreCase))
             {
-                string[] candidates = OperatingSystem.IsWindows()
-                    ? new[] { "Processing_NDI_Lib_Advanced_x64.dll", "Processing.NDI.Lib.x64.dll", "Processing_NDI_Lib_Advanced_x86.dll", "Processing.NDI.Lib.x86.dll", "Processing.NDI.Lib.dll" }
-                    : new[] { "libndi.so.5", "libndi.so.4", "libndi.so", "/usr/lib/libndi.so.5", "/usr/local/lib/libndi.so.5" };
+                var candidates = new System.Collections.Generic.List<string>();
+
+                if (OperatingSystem.IsWindows())
+                {
+                    string appDir = AppDomain.CurrentDomain.BaseDirectory;
+                    candidates.Add(System.IO.Path.Combine(appDir, "Processing_NDI_Lib_Advanced_x64.dll"));
+                    candidates.Add(System.IO.Path.Combine(appDir, "Processing.NDI.Lib.x64.dll"));
+                    candidates.Add(System.IO.Path.Combine(appDir, "Processing_NDI_Lib_Advanced_x86.dll"));
+                    candidates.Add(System.IO.Path.Combine(appDir, "Processing.NDI.Lib.x86.dll"));
+                    candidates.Add(System.IO.Path.Combine(appDir, "Processing.NDI.Lib.dll"));
+
+                    string? ndiEnv = Environment.GetEnvironmentVariable("NDI_RUNTIME_DIR_V5")
+                                  ?? Environment.GetEnvironmentVariable("NDI_RUNTIME_DIR_V4");
+                    if (!string.IsNullOrEmpty(ndiEnv))
+                    {
+                        candidates.Add(System.IO.Path.Combine(ndiEnv, "Processing_NDI_Lib_Advanced_x64.dll"));
+                        candidates.Add(System.IO.Path.Combine(ndiEnv, "Processing.NDI.Lib.x64.dll"));
+                    }
+
+                    candidates.Add(@"C:\Program Files\NDI\NDI 5 SDK\v5\lib\x64\Processing.NDI.Lib.x64.dll");
+                    candidates.Add(@"C:\Program Files\NDI\NDI 5 Advanced SDK\v5\lib\x64\Processing_NDI_Lib_Advanced_x64.dll");
+                    candidates.Add("Processing_NDI_Lib_Advanced_x64.dll");
+                    candidates.Add("Processing.NDI.Lib.x64.dll");
+                    candidates.Add("Processing.NDI.Lib.dll");
+                }
+                else
+                {
+                    candidates.Add("libndi.so.5");
+                    candidates.Add("libndi.so.4");
+                    candidates.Add("libndi.so");
+                    candidates.Add("/usr/lib/libndi.so.5");
+                    candidates.Add("/usr/local/lib/libndi.so.5");
+                }
 
                 foreach (var candidate in candidates)
                 {
                     if (NativeLibrary.TryLoad(candidate, assembly, searchPath, out var handle))
                     {
+                        Console.WriteLine($"[NDI Native] Successfully loaded native NDI library from: {candidate}");
                         return handle;
                     }
                 }
+
+                Console.WriteLine($"[NDI Native] Warning: Failed to load native NDI library from candidate list.");
             }
             return IntPtr.Zero;
         }
@@ -79,72 +111,59 @@ namespace NdiWorker
             public long timestamp;
         }
 
-        [DllImport(LibNameLinux, EntryPoint = "NDIlib_initialize")]
+        [DllImport(NdiLibName, EntryPoint = "NDIlib_initialize")]
         [return: MarshalAs(UnmanagedType.U1)]
-        private static extern bool NDIlib_initialize_linux();
-
-        [DllImport(LibNameWin, EntryPoint = "NDIlib_initialize")]
-        [return: MarshalAs(UnmanagedType.U1)]
-        private static extern bool NDIlib_initialize_win();
+        private static extern bool NDIlib_initialize_native();
 
         public static bool NDIlib_initialize()
         {
             try
             {
-                return OperatingSystem.IsWindows() ? NDIlib_initialize_win() : NDIlib_initialize_linux();
+                return NDIlib_initialize_native();
             }
-            catch
+            catch (Exception ex)
             {
+                Console.WriteLine($"[NDI Native] Exception calling NDIlib_initialize: {ex.Message}");
                 return false;
             }
         }
 
-        [DllImport(LibNameLinux, EntryPoint = "NDIlib_send_create")]
-        private static extern IntPtr NDIlib_send_create_linux(ref NDIlib_send_create_t p_create_settings);
-
-        [DllImport(LibNameWin, EntryPoint = "NDIlib_send_create")]
-        private static extern IntPtr NDIlib_send_create_win(ref NDIlib_send_create_t p_create_settings);
+        [DllImport(NdiLibName, EntryPoint = "NDIlib_send_create")]
+        private static extern IntPtr NDIlib_send_create_native(ref NDIlib_send_create_t p_create_settings);
 
         public static IntPtr NDIlib_send_create(ref NDIlib_send_create_t settings)
         {
             try
             {
-                return OperatingSystem.IsWindows() ? NDIlib_send_create_win(ref settings) : NDIlib_send_create_linux(ref settings);
+                return NDIlib_send_create_native(ref settings);
             }
-            catch
+            catch (Exception ex)
             {
+                Console.WriteLine($"[NDI Native] Exception calling NDIlib_send_create: {ex.Message}");
                 return IntPtr.Zero;
             }
         }
 
-        [DllImport(LibNameLinux, EntryPoint = "NDIlib_send_send_video_v2")]
-        private static extern void NDIlib_send_send_video_v2_linux(IntPtr p_instance, ref NDIlib_video_frame_v2_t p_video_data);
-
-        [DllImport(LibNameWin, EntryPoint = "NDIlib_send_send_video_v2")]
-        private static extern void NDIlib_send_send_video_v2_win(IntPtr p_instance, ref NDIlib_video_frame_v2_t p_video_data);
+        [DllImport(NdiLibName, EntryPoint = "NDIlib_send_send_video_v2")]
+        private static extern void NDIlib_send_send_video_v2_native(IntPtr p_instance, ref NDIlib_video_frame_v2_t p_video_data);
 
         public static void NDIlib_send_send_video_v2(IntPtr p_instance, ref NDIlib_video_frame_v2_t p_video_data)
         {
             try
             {
-                if (OperatingSystem.IsWindows()) NDIlib_send_send_video_v2_win(p_instance, ref p_video_data);
-                else NDIlib_send_send_video_v2_linux(p_instance, ref p_video_data);
+                NDIlib_send_send_video_v2_native(p_instance, ref p_video_data);
             }
             catch { }
         }
 
-        [DllImport(LibNameLinux, EntryPoint = "NDIlib_send_destroy")]
-        private static extern void NDIlib_send_destroy_linux(IntPtr p_instance);
-
-        [DllImport(LibNameWin, EntryPoint = "NDIlib_send_destroy")]
-        private static extern void NDIlib_send_destroy_win(IntPtr p_instance);
+        [DllImport(NdiLibName, EntryPoint = "NDIlib_send_destroy")]
+        private static extern void NDIlib_send_destroy_native(IntPtr p_instance);
 
         public static void NDIlib_send_destroy(IntPtr p_instance)
         {
             try
             {
-                if (OperatingSystem.IsWindows()) NDIlib_send_destroy_win(p_instance);
-                else NDIlib_send_destroy_linux(p_instance);
+                NDIlib_send_destroy_native(p_instance);
             }
             catch { }
         }
