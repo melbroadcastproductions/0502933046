@@ -275,7 +275,7 @@ namespace NdiWorker
                 : "";
 
             string arguments = useNativeNdi
-                ? $"-re {inputArgs} {filterArgs} -pix_fmt bgra -f rawvideo pipe:1{rtpOutput}"
+                ? $"-re {inputArgs} {filterArgs} -an -pix_fmt bgra -f rawvideo pipe:1{rtpOutput}"
                 : $"-re {inputArgs} {filterArgs} -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -g {Fps} -c:a aac -b:a 128k -f mpegts \"udp://{DestIp}:{DestPort}?pkt_size=1316&ttl=1\"{rtpOutput}";
 
             Console.WriteLine($"[NdiWorker] Launching FFmpeg pipeline (Native NDI Mode: {useNativeNdi}): ffmpeg {arguments}");
@@ -376,7 +376,7 @@ namespace NdiWorker
         {
             if (DiscoveryMode.Equals("CentralServer", StringComparison.OrdinalIgnoreCase))
             {
-                string iniContent = $"[Network]\ndiscovery={DiscoveryServerIp}:{DiscoveryServerPort}\nic_ip={WorkerIp}\nip_address={WorkerIp}\n";
+                string iniContent = $"[Network]\ndiscovery={DiscoveryServerIp}:{DiscoveryServerPort}\nnic_ip={WorkerIp}\nip_address={WorkerIp}\n";
                 Console.WriteLine($"[NdiWorker] Configuring NDI Discovery Central Server: {DiscoveryServerIp}:{DiscoveryServerPort} for Worker IP: {WorkerIp}");
                 try
                 {
