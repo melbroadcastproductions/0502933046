@@ -300,20 +300,39 @@ namespace NdiManager.Services
 
             string logPath = Path.Combine(Path.GetTempPath(), $"{id}.log");
             string rootDir = Directory.GetParent(Directory.GetCurrentDirectory())?.FullName ?? Directory.GetCurrentDirectory();
-            string workerDll = Path.Combine(rootDir, "NdiWorker", "bin", "Debug", "net10.0", "NdiWorker.dll");
-            if (!File.Exists(workerDll))
+            string workerExe = Path.Combine(rootDir, "NdiWorker", "bin", "Release", "net10.0", "win-x64", "publish", "NdiWorker.exe");
+            if (!File.Exists(workerExe))
             {
-                workerDll = Path.Combine(rootDir, "NdiWorker", "bin", "Release", "net10.0", "NdiWorker.dll");
+                workerExe = Path.Combine(rootDir, "NdiWorker", "bin", "Debug", "net10.0", "win-x64", "NdiWorker.exe");
             }
-            if (!File.Exists(workerDll))
+
+            string fileName;
+            string arguments;
+
+            if (OperatingSystem.IsWindows() && File.Exists(workerExe))
             {
-                workerDll = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "NdiWorker.dll");
+                fileName = workerExe;
+                arguments = "";
+            }
+            else
+            {
+                string workerDll = Path.Combine(rootDir, "NdiWorker", "bin", "Debug", "net10.0", "NdiWorker.dll");
+                if (!File.Exists(workerDll))
+                {
+                    workerDll = Path.Combine(rootDir, "NdiWorker", "bin", "Release", "net10.0", "NdiWorker.dll");
+                }
+                if (!File.Exists(workerDll))
+                {
+                    workerDll = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "NdiWorker.dll");
+                }
+                fileName = "dotnet";
+                arguments = $"\"{workerDll}\"";
             }
 
             var psi = new ProcessStartInfo
             {
-                FileName = "dotnet",
-                Arguments = $"\"{workerDll}\"",
+                FileName = fileName,
+                Arguments = arguments,
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
