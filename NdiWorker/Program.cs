@@ -383,22 +383,42 @@ namespace NdiWorker
             {
                 string iniContent = $"[Network]\ndiscovery={DiscoveryServerIp}:{DiscoveryServerPort}\nnic_ip={WorkerIp}\nip_address={WorkerIp}\n";
                 Console.WriteLine($"[NdiWorker] Configuring NDI Discovery Central Server: {DiscoveryServerIp}:{DiscoveryServerPort} for Worker IP: {WorkerIp}");
-                try
-                {
-                    Directory.CreateDirectory("/etc/ndi");
-                    File.WriteAllText("/etc/ndi/ndi.ini", iniContent);
-                }
-                catch
+
+                if (OperatingSystem.IsWindows())
                 {
                     try
                     {
-                        File.WriteAllText("ndi.ini", iniContent);
+                        string progData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
+                        string ndiDir = Path.Combine(progData, "NDI");
+                        Directory.CreateDirectory(ndiDir);
+                        string targetFile = Path.Combine(ndiDir, "ndi.ini");
+                        File.WriteAllText(targetFile, iniContent);
+                        Console.WriteLine($"[NdiWorker] NDI Access Manager standard ini written to: {targetFile}");
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"[NdiWorker] Could not write NDI ini file: {ex.Message}");
+                        Console.WriteLine($"[NdiWorker] Could not write Windows NDI ini file: {ex.Message}");
                     }
                 }
+                else
+                {
+                    try
+                    {
+                        Directory.CreateDirectory("/etc/ndi");
+                        File.WriteAllText("/etc/ndi/ndi.ini", iniContent);
+                        Console.WriteLine("[NdiWorker] Standard Linux NDI ini written to /etc/ndi/ndi.ini");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[NdiWorker] Could not write Linux NDI ini file: {ex.Message}");
+                    }
+                }
+
+                try
+                {
+                    File.WriteAllText("ndi.ini", iniContent);
+                }
+                catch { }
             }
             else
             {
