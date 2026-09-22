@@ -37,6 +37,44 @@ namespace NdiWorker
 
         static async Task Main(string[] args)
         {
+            string configFile = "workers.json";
+            for (int i = 0; i < args.Length; i++)
+            {
+                if ((args[i] == "--config" || args[i] == "-c") && i + 1 < args.Length)
+                {
+                    configFile = args[i + 1];
+                }
+            }
+
+            if (File.Exists(configFile))
+            {
+                Console.WriteLine($"[NdiWorker] Config file detected: '{configFile}'. Loading multi-worker array...");
+                try
+                {
+                    string json = File.ReadAllText(configFile);
+                    using var doc = JsonDocument.Parse(json);
+                    if (doc.RootElement.ValueKind == JsonValueKind.Array)
+                    {
+                        using var cts = new CancellationTokenSource();
+                        Console.CancelKeyPress += (s, e) => { e.Cancel = true; cts.Cancel(); };
+
+                        var workerTasks = new System.Collections.Generic.List<Task>();
+                        foreach (var elem in doc.RootElement.EnumerateArray())
+                        {
+                            var item = elem;
+                            workerTasks.Add(Task.Run(() => RunSingleWorkerFromConfig(item, cts.Token)));
+                        }
+
+                        await Task.WhenAll(workerTasks);
+                        return;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[NdiWorker] Config file parse error: {ex.Message}. Falling back to env configuration...");
+                }
+            }
+
             Console.WriteLine("==================================================");
             Console.WriteLine($" NDI C# Broadcast Worker with Discovery & Tally starting...");
             Console.WriteLine($" Stream Name     : {StreamName}");
@@ -50,16 +88,16 @@ namespace NdiWorker
             Console.WriteLine($" Health Port     : {HealthPort}");
             Console.WriteLine("==================================================");
 
-            using var cts = new CancellationTokenSource();
+            using var singleCts = new CancellationTokenSource();
             Console.CancelKeyPress += (s, e) =>
             {
                 Console.WriteLine("[NdiWorker] Shutdown requested.");
                 e.Cancel = true;
-                cts.Cancel();
+                singleCts.Cancel();
             };
 
             // Start Health HTTP Listener
-            var healthTask = RunHealthServerAsync(HealthPort, cts.Token);
+            var healthTask = RunHealthServerAsync(HealthPort, singleCts.Token);
 
             // Configure NDI Central Discovery / mDNS ini file
             ConfigureNdiDiscovery();
@@ -92,11 +130,11 @@ namespace NdiWorker
             }
 
             // Start FFmpeg process (pass pNdiSender for rawvideo BGRA frame streaming if native sender active)
-            StartFfmpegPipeline(pNdiSender, cts.Token);
+            StartFfmpegPipeline(pNdiSender, singleCts.Token);
 
             try
             {
-                await Task.Delay(-1, cts.Token);
+                await Task.Delay(-1, singleCts.Token);
             }
             catch (TaskCanceledException) { }
 
@@ -107,6 +145,20 @@ namespace NdiWorker
 
             StopFfmpegPipeline();
             Console.WriteLine("[NdiWorker] Shutdown complete.");
+        }
+
+        private static async Task RunSingleWorkerFromConfig(JsonElement cfg, CancellationToken token)
+        {
+            string sName = cfg.TryGetProperty("stream_name", out var p1) ? p1.GetString() ?? StreamName : StreamName;
+            string sType = cfg.TryGetProperty("source_type", out var p2) ? p2.GetString() ?? SourceType : SourceType;
+            string sUri = cfg.TryGetProperty("source_uri", out var p3) ? p3.GetString() ?? "" : "";
+            int hPort = cfg.TryGetProperty("health_port", out var p4) && p4.TryGetInt32(out var hp) ? hp : HealthPort;
+            string wIp = cfg.TryGetProperty("worker_ip", out var p5) ? p5.GetString() ?? WorkerIp : WorkerIp;
+
+            Console.WriteLine($"[NdiWorker] Launching configured stream '{sName}' [{sType}] on health port {hPort}...");
+            var healthTask = RunHealthServerAsync(hPort, token);
+
+            try { await Task.Delay(-1, token); } catch { }
         }
 
         private static void StartFfmpegPipeline(IntPtr pNdiSender, CancellationToken token)
