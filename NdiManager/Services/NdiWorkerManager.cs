@@ -139,7 +139,7 @@ namespace NdiManager.Services
                 DestPort = int.TryParse(GetLabel(labels, "dest_port", "5004"), out var dp) ? dp : 5004,
                 HealthPort = int.TryParse(GetLabel(labels, "health_port", "8080"), out var hp) ? hp : 8080,
                 DiscoveryMode = GetLabel(labels, "discovery_mode", "Bonjour"),
-                DiscoveryServerIp = GetLabel(labels, "discovery_server_ip", "10.10.1.1"),
+                DiscoveryServerIp = GetLabel(labels, "discovery_server_ip", "127.0.0.1"),
                 DiscoveryServerPort = int.TryParse(GetLabel(labels, "discovery_server_port", "5959"), out var dsp) ? dsp : 5959,
                 TallyState = GetLabel(labels, "tally_state", "Off"),
                 UmdText = GetLabel(labels, "umd_text", streamName)
@@ -162,7 +162,7 @@ namespace NdiManager.Services
             };
         }
 
-        private async Task<object?> FetchHealthAsync(int port, string host = "10.10.1.1")
+        private async Task<object?> FetchHealthAsync(int port, string host = "127.0.0.1")
         {
             try {
                 var json = await _httpClient.GetStringAsync($"http://{host}:{port}/health");
@@ -235,7 +235,7 @@ namespace NdiManager.Services
                         ["umd_text"] = config.UmdText
                     };
 
-                    // IP allocation starts at 10.10.1.10 up to 10.10.1.250 (reserving 10.10.1.1 exclusively for NDI Discovery Server)
+                    // IP allocation starts at 10.10.1.10 up to 10.10.1.250 (reserving 127.0.0.1 exclusively for NDI Discovery Server)
                     int ipSuffix = 10 + (existingWorkers.Count % 240);
                     string assignedWorkerIp = $"10.10.1.{ipSuffix}";
 

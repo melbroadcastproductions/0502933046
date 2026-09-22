@@ -33,7 +33,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 const data = await res.json();
                 engineModeBadge.textContent = data.docker_available ? "Docker Engine" : "Process Fallback";
                 engineModeBadge.className = `badge ${data.docker_available ? 'badge-green' : 'badge-yellow'}`;
-                discoveryModeVal.textContent = "Central Server (10.10.1.1:5959)";
+                discoveryModeVal.textContent = "Central Server (127.0.0.1:5959)";
                 workerCountVal.textContent = `${data.running_workers} / ${data.total_workers}`;
                 cpuUsageVal.textContent = `${data.cpu_usage_percent}%`;
                 ramUsageVal.textContent = `${data.memory_usage_mb} MB`;
@@ -138,7 +138,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     source_type: "QuadSplit",
                     source_uri: updatedSourcesUri,
                     discovery_mode: "CentralServer",
-                    discovery_server_ip: "10.10.1.1",
+                    discovery_server_ip: "127.0.0.1",
                     discovery_server_port: 5959,
                     resolution: "1920x1080",
                     fps: "30",
@@ -233,7 +233,7 @@ document.addEventListener("DOMContentLoaded", () => {
             source_type: document.getElementById("sourceType").value,
             source_uri: document.getElementById("sourceUri").value,
             discovery_mode: document.getElementById("discoveryMode").value,
-            discovery_server_ip: discIpPort[0] || "10.10.1.1",
+            discovery_server_ip: discIpPort[0] || "127.0.0.1",
             discovery_server_port: parseInt(discIpPort[1] || "5959"),
             resolution: document.getElementById("resolution").value,
             fps: document.getElementById("fps").value,
