@@ -256,7 +256,16 @@ namespace NdiWorker
                 _ => "black@0.6"
             };
 
-            string vfilter = $"scale={Resolution.Replace('x', ':')},drawtext=text='STREAM\\: {StreamName} [{SourceType}] ({Resolution} @ {Fps}fps)':x=40:y=40:fontsize=36:fontcolor=white:box=1:boxcolor={tallyBoxColor},drawtext=text='TALLY\\: {TallyState.ToUpper()} | UMD\\: {UmdText} | {OverlayText}':x=40:y=90:fontsize=28:fontcolor=yellow:box=1:boxcolor={tallyBoxColor}";
+            string fontOpt = OperatingSystem.IsWindows() && File.Exists(@"C:\Windows\Fonts\arial.ttf")
+                ? ":fontfile='C\\:/Windows/Fonts/arial.ttf'"
+                : "";
+
+            string sanitize(string s) => s.Replace(":", "\\:").Replace("'", "").Replace("\\", "\\\\");
+            string safeStreamName = sanitize(StreamName);
+            string safeUmdText = sanitize(UmdText);
+            string safeOverlayText = sanitize(OverlayText);
+
+            string vfilter = $"scale={Resolution.Replace('x', ':')},drawtext=text='STREAM\\: {safeStreamName} [{SourceType}] ({Resolution} @ {Fps}fps)'{fontOpt}:x=40:y=40:fontsize=36:fontcolor=white:box=1:boxcolor={tallyBoxColor},drawtext=text='TALLY\\: {TallyState.ToUpper()} | UMD\\: {safeUmdText} | {safeOverlayText}'{fontOpt}:x=40:y=90:fontsize=28:fontcolor=yellow:box=1:boxcolor={tallyBoxColor}";
 
             switch (SourceType.ToLowerInvariant())
             {
@@ -636,7 +645,7 @@ namespace NdiWorker
 
         private static async Task RunHealthServerAsync(int port, CancellationToken token)
         {
-            using var listener = new HttpListener();
+            HttpListener listener = new HttpListener();
             bool started = false;
 
             try
@@ -650,7 +659,8 @@ namespace NdiWorker
             {
                 try
                 {
-                    listener.Prefixes.Clear();
+                    try { listener.Close(); } catch { }
+                    listener = new HttpListener();
                     listener.Prefixes.Add($"http://localhost:{port}/");
                     listener.Start();
                     started = true;
