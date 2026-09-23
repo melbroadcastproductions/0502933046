@@ -469,12 +469,14 @@ namespace NdiWorker
             byte tallyG = tally.Equals("Preview", StringComparison.OrdinalIgnoreCase) ? (byte)255 : (byte)0;
             byte tallyB = 0;
 
-            byte animColor = (byte)((frameNum * 5) % 256);
+            byte animOffset = (byte)((frameNum * 4) % 256);
+
+            string currentSourceMode = SourceType.ToLowerInvariant();
 
             for (int y = 0; y < height; y++)
             {
-                bool isTopBar = y < 100;
-                bool isBottomBar = y > height - 80;
+                bool isTopBar = y < 90;
+                bool isBottomBar = y > height - 70;
 
                 for (int x = 0; x < width; x++)
                 {
@@ -489,10 +491,129 @@ namespace NdiWorker
                     }
                     else if (isBottomBar)
                     {
-                        buffer[offset + 0] = 50;
-                        buffer[offset + 1] = 50;
-                        buffer[offset + 2] = 50;
+                        buffer[offset + 0] = 30;
+                        buffer[offset + 1] = 30;
+                        buffer[offset + 2] = 30;
                         buffer[offset + 3] = 255;
+                    }
+                    else if (currentSourceMode == "webpage")
+                    {
+                        // Dedicated Live Web Page Browser UI Frame Generator
+                        bool isAddressBar = y >= 90 && y < 140;
+                        bool isChartArea = y >= 140 && y < height - 160;
+                        bool isTickerArea = y >= height - 160 && y <= height - 70;
+
+                        if (isAddressBar)
+                        {
+                            // Browser Header / Address Bar
+                            bool inUrlBox = x > 180 && x < width - 180 && y >= 100 && y <= 130;
+                            if (inUrlBox)
+                            {
+                                buffer[offset + 0] = 240; buffer[offset + 1] = 240; buffer[offset + 2] = 240; buffer[offset + 3] = 255;
+                            }
+                            else
+                            {
+                                buffer[offset + 0] = 45; buffer[offset + 1] = 45; buffer[offset + 2] = 45; buffer[offset + 3] = 255;
+                            }
+                        }
+                        else if (isChartArea)
+                        {
+                            // Dark background for Financial Web App
+                            byte bg = 18;
+                            byte r = bg, g = bg, b = bg;
+
+                            // Gridlines
+                            if (x % 120 == 0 || y % 80 == 0) { r = 35; g = 45; b = 60; }
+
+                            // Live animated Stock Price Line Chart
+                            int chartCenterY = 320;
+                            int waveY = chartCenterY + (int)(Math.Sin((x + frameNum * 6) * 0.015) * 80.0) + (int)(Math.Cos(x * 0.04) * 25.0);
+                            if (Math.Abs(y - waveY) < 3)
+                            {
+                                r = 0; g = 220; b = 120; // Glowing Green Financial Line Chart
+                            }
+                            else if (y > waveY && y < waveY + 80)
+                            {
+                                // Subtle fill under line
+                                r = 10; g = 60; b = 35;
+                            }
+
+                            buffer[offset + 0] = b; buffer[offset + 1] = g; buffer[offset + 2] = r; buffer[offset + 3] = 255;
+                        }
+                        else
+                        {
+                            // Bottom Financial Ticker Cards
+                            int cardIndex = (x * 4) / width;
+                            byte bgVal = (byte)(25 + cardIndex * 8);
+                            byte r = bgVal, g = bgVal, b = (byte)(bgVal + 15);
+
+                            int animatedBarHeight = (int)(Math.Abs(Math.Sin((cardIndex + 1) * 0.8 + frameNum * 0.1)) * 40.0);
+                            if (y > (height - 110 - animatedBarHeight) && y < height - 75)
+                            {
+                                r = 40; g = 180; b = 255; // Cyan Volume Bars
+                            }
+
+                            buffer[offset + 0] = b; buffer[offset + 1] = g; buffer[offset + 2] = r; buffer[offset + 3] = 255;
+                        }
+                    }
+                    else if (currentSourceMode == "quadsplit")
+                    {
+                        // Dedicated 2x2 Quad Split Screen Frame Generator
+                        int midX = width / 2;
+                        int midY = (height - 160) / 2 + 90;
+
+                        bool isBorder = Math.Abs(x - midX) < 4 || Math.Abs(y - midY) < 4;
+
+                        if (isBorder)
+                        {
+                            buffer[offset + 0] = 0; buffer[offset + 1] = 255; buffer[offset + 2] = 255; buffer[offset + 3] = 255; // Yellow Grid Borders
+                        }
+                        else
+                        {
+                            bool isQuad1 = x < midX && y < midY; // Quad 1: Top-Left (Camera / Color Bars)
+                            bool isQuad2 = x >= midX && y < midY; // Quad 2: Top-Right (Web Chart)
+                            bool isQuad3 = x < midX && y >= midY; // Quad 3: Bottom-Left (Market Depth)
+                            bool isQuad4 = x >= midX && y >= midY; // Quad 4: Bottom-Right (News / Ticker)
+
+                            byte r = 0, g = 0, b = 0;
+
+                            if (isQuad1)
+                            {
+                                int bar = (x * 7) / midX;
+                                switch (bar)
+                                {
+                                    case 0: r = 180; g = 180; b = 180; break;
+                                    case 1: r = 180; g = 180; b = 0; break;
+                                    case 2: r = 0; g = 180; b = 180; break;
+                                    case 3: r = 0; g = 180; b = 0; break;
+                                    case 4: r = 180; g = 0; b = 180; break;
+                                    case 5: r = 180; g = 0; b = 0; break;
+                                    default: r = 0; g = 0; b = 180; break;
+                                }
+                            }
+                            else if (isQuad2)
+                            {
+                                // Quad 2: Simulated Web Page
+                                r = 15; g = 25; b = 40;
+                                int waveY = midY / 2 + (int)(Math.Sin((x + frameNum * 8) * 0.02) * 40.0);
+                                if (Math.Abs(y - waveY) < 3) { r = 0; g = 255; b = 100; }
+                            }
+                            else if (isQuad3)
+                            {
+                                // Quad 3: Market Order Book Depth
+                                r = 20; g = 15; b = 25;
+                                int depthWidth = (int)((y - midY) * 1.5 + (frameNum % 50));
+                                if ((x - (midX / 2)) < depthWidth && (x - (midX / 2)) > 0) { r = 220; g = 40; b = 60; }
+                            }
+                            else
+                            {
+                                // Quad 4: News Feed Radar & Ticker
+                                r = 10; g = 30; b = 20;
+                                if ((x + y + frameNum * 4) % 40 < 4) { r = 0; g = 200; b = 255; }
+                            }
+
+                            buffer[offset + 0] = b; buffer[offset + 1] = g; buffer[offset + 2] = r; buffer[offset + 3] = 255;
+                        }
                     }
                     else
                     {
@@ -513,7 +634,7 @@ namespace NdiWorker
                         // Add subtle animated scanline
                         if ((y + frameNum * 2) % 60 < 4)
                         {
-                            r = animColor;
+                            r = animOffset;
                         }
 
                         buffer[offset + 0] = b;
