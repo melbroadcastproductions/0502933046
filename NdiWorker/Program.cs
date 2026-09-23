@@ -190,8 +190,14 @@ namespace NdiWorker
                 Console.WriteLine($"[NdiWorker] Native NDI SDK initialization note: {ex.Message}");
             }
 
-            // Start FFmpeg process (pass pNdiSender for rawvideo BGRA frame streaming if native sender active)
-            StartFfmpegPipeline(pNdiSender, singleCts.Token);
+            // If FFmpeg is not present or if native NDI sender is active, run managed C# BGRA frame generator loop
+            bool ffmpegStarted = StartFfmpegPipeline(pNdiSender, singleCts.Token);
+
+            if (pNdiSender != IntPtr.Zero && !ffmpegStarted)
+            {
+                Console.WriteLine("[NdiWorker] FFmpeg process not detected. Launching Pure C# Managed BGRA NDI Frame Generator...");
+                _ = Task.Run(() => RunManagedFrameSendingLoop(pNdiSender, singleCts.Token), singleCts.Token);
+            }
 
             try
             {
@@ -222,7 +228,7 @@ namespace NdiWorker
             try { await Task.Delay(-1, token); } catch { }
         }
 
-        private static void StartFfmpegPipeline(IntPtr pNdiSender, CancellationToken token)
+        private static bool StartFfmpegPipeline(IntPtr pNdiSender, CancellationToken token)
         {
             string inputArgs = "";
             string filterArgs = "";
@@ -369,11 +375,127 @@ namespace NdiWorker
                     {
                         Task.Run(() => RunNdiFrameSendingLoop(pNdiSender, _ffmpegProcess.StandardOutput.BaseStream, token), token);
                     }
+                    return true;
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[NdiWorker] Note: FFmpeg launch status: {ex.Message}");
+                Console.WriteLine($"[NdiWorker] FFmpeg not found or failed to start ({ex.Message}). Falling back to Pure C# Frame Generator.");
+            }
+            return false;
+        }
+
+        private static void RunManagedFrameSendingLoop(IntPtr pNdiSender, CancellationToken token)
+        {
+            var resParts = Resolution.Split('x');
+            int xres = int.TryParse(resParts[0], out var w) ? w : 1920;
+            int yres = resParts.Length > 1 && int.TryParse(resParts[1], out var h) ? h : 1080;
+            int fpsVal = int.TryParse(Fps, out var f) ? f : 30;
+            int frameIntervalMs = 1000 / Math.Max(1, fpsVal);
+            int strideBytes = xres * 4;
+            int frameSizeBytes = strideBytes * yres;
+
+            byte[] buffer = new byte[frameSizeBytes];
+            long frameIndex = 0;
+
+            Console.WriteLine($"[NdiWorker] Pure C# Managed Frame Loop active ({xres}x{yres} BGRA @ {fpsVal}fps)");
+
+            while (!token.IsCancellationRequested)
+            {
+                var frameStart = DateTime.UtcNow;
+                frameIndex++;
+
+                GeneratePureBgraFrame(buffer, xres, yres, frameIndex, StreamName, TallyState, UmdText);
+
+                unsafe
+                {
+                    fixed (byte* pData = buffer)
+                    {
+                        var videoFrame = new NdiNative.NDIlib_video_frame_v2_t
+                        {
+                            xres = xres,
+                            yres = yres,
+                            FourCC = NdiNative.NDIlib_FourCC_video_type_e.NDIlib_FourCC_video_type_BGRA,
+                            frame_rate_N = fpsVal,
+                            frame_rate_D = 1,
+                            picture_aspect_ratio = (float)xres / yres,
+                            frame_format_type = NdiNative.NDIlib_frame_format_type_e.NDIlib_frame_format_type_progressive,
+                            timecode = 9223372036854775807L,
+                            p_data = (IntPtr)pData,
+                            line_stride_in_bytes = strideBytes,
+                            p_metadata = IntPtr.Zero,
+                            timestamp = 0
+                        };
+
+                        NdiNative.NDIlib_send_send_video_v2(pNdiSender, ref videoFrame);
+                    }
+                }
+
+                int elapsedMs = (int)(DateTime.UtcNow - frameStart).TotalMilliseconds;
+                int sleepMs = Math.Max(1, frameIntervalMs - elapsedMs);
+                Thread.Sleep(sleepMs);
+            }
+        }
+
+        private static void GeneratePureBgraFrame(byte[] buffer, int width, int height, long frameNum, string name, string tally, string umd)
+        {
+            byte tallyR = tally.Equals("Program", StringComparison.OrdinalIgnoreCase) ? (byte)255 : (byte)0;
+            byte tallyG = tally.Equals("Preview", StringComparison.OrdinalIgnoreCase) ? (byte)255 : (byte)0;
+            byte tallyB = 0;
+
+            byte animColor = (byte)((frameNum * 5) % 256);
+
+            for (int y = 0; y < height; y++)
+            {
+                bool isTopBar = y < 100;
+                bool isBottomBar = y > height - 80;
+
+                for (int x = 0; x < width; x++)
+                {
+                    int offset = (y * width + x) * 4;
+
+                    if (isTopBar)
+                    {
+                        buffer[offset + 0] = tallyB;
+                        buffer[offset + 1] = tallyG;
+                        buffer[offset + 2] = tallyR;
+                        buffer[offset + 3] = 255;
+                    }
+                    else if (isBottomBar)
+                    {
+                        buffer[offset + 0] = 50;
+                        buffer[offset + 1] = 50;
+                        buffer[offset + 2] = 50;
+                        buffer[offset + 3] = 255;
+                    }
+                    else
+                    {
+                        // SMPTE-style vertical color bars
+                        int barIndex = (x * 7) / width;
+                        byte r = 0, g = 0, b = 0;
+                        switch (barIndex)
+                        {
+                            case 0: r = 200; g = 200; b = 200; break; // White
+                            case 1: r = 200; g = 200; b = 0; break;   // Yellow
+                            case 2: r = 0; g = 200; b = 200; break;   // Cyan
+                            case 3: r = 0; g = 200; b = 0; break;     // Green
+                            case 4: r = 200; g = 0; b = 200; break;   // Magenta
+                            case 5: r = 200; g = 0; b = 0; break;     // Red
+                            case 6: r = 0; g = 0; b = 200; break;     // Blue
+                        }
+
+                        // Add subtle animated scanline
+                        if ((y + frameNum * 2) % 60 < 4)
+                        {
+                            r = animColor;
+                        }
+
+                        buffer[offset + 0] = b;
+                        buffer[offset + 1] = g;
+                        buffer[offset + 2] = r;
+                        buffer[offset + 3] = 255;
+                    }
+                }
             }
         }
 

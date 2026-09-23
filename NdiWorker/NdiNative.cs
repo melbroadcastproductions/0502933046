@@ -52,14 +52,21 @@ namespace NdiWorker
 
                 foreach (var candidate in candidates)
                 {
-                    if (NativeLibrary.TryLoad(candidate, assembly, searchPath, out var handle))
+                    try
                     {
-                        Console.WriteLine($"[NDI Native] Successfully loaded native NDI library from: {candidate}");
-                        return handle;
+                        if (NativeLibrary.TryLoad(candidate, assembly, searchPath, out var handle))
+                        {
+                            Console.WriteLine($"[NDI Native] SUCCESS: Successfully loaded native NDI library from '{candidate}'");
+                            return handle;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[NDI Native] Load attempt for '{candidate}' threw exception: {ex.Message}");
                     }
                 }
 
-                Console.WriteLine($"[NDI Native] Warning: Failed to load native NDI library from candidate list.");
+                Console.WriteLine($"[NDI Native] WARNING: Failed to load native NDI library from any candidate path. Ensure Processing_NDI_Lib_Advanced_x64.dll or Processing.NDI.Lib.x64.dll and Visual C++ Redistributable are installed.");
             }
             return IntPtr.Zero;
         }
