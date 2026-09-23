@@ -173,12 +173,16 @@ namespace NdiWorker
                     pNdiSender = NdiNative.NDIlib_send_create(ref sendSettings);
                     if (pNdiSender != IntPtr.Zero)
                     {
-                        Console.WriteLine($"[NdiWorker] Native NDI Sender initialized: '{StreamName}' (Handle: {pNdiSender})");
+                        Console.WriteLine($"[NdiWorker] Native NDI Sender successfully initialized: '{StreamName}' (Handle: {pNdiSender})");
                     }
                     else
                     {
-                        Console.WriteLine($"[NdiWorker] NDIlib_send_create failed for '{StreamName}'");
+                        Console.WriteLine($"[NdiWorker] NDIlib_send_create failed to create sender handle for '{StreamName}'");
                     }
+                }
+                else
+                {
+                    Console.WriteLine("[NdiWorker] Native NDI SDK initialization returned false. Check that native NDI DLL is present and architecture matches.");
                 }
             }
             catch (Exception ex)
@@ -492,13 +496,40 @@ namespace NdiWorker
 
         private static async Task RunHealthServerAsync(int port, CancellationToken token)
         {
+            using var listener = new HttpListener();
+            bool started = false;
+
             try
             {
-                using var listener = new HttpListener();
                 listener.Prefixes.Add($"http://*:{port}/");
                 listener.Start();
-                Console.WriteLine($"[NdiWorker] Health HTTP listener listening on port {port}");
+                started = true;
+                Console.WriteLine($"[NdiWorker] Health HTTP listener listening on wildcard port {port}");
+            }
+            catch (HttpListenerException)
+            {
+                try
+                {
+                    listener.Prefixes.Clear();
+                    listener.Prefixes.Add($"http://localhost:{port}/");
+                    listener.Start();
+                    started = true;
+                    Console.WriteLine($"[NdiWorker] Health HTTP listener bound to localhost port {port} (non-admin fallback)");
+                }
+                catch (Exception ex2)
+                {
+                    Console.WriteLine($"[NdiWorker] Health server fallback error: {ex2.Message}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[NdiWorker] Health server exception: {ex.Message}");
+            }
 
+            if (!started) return;
+
+            try
+            {
                 while (!token.IsCancellationRequested)
                 {
                     var contextTask = listener.GetContextAsync();
@@ -513,7 +544,7 @@ namespace NdiWorker
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[NdiWorker] Health server exception: {ex.Message}");
+                Console.WriteLine($"[NdiWorker] Health server listener exception: {ex.Message}");
             }
         }
 
