@@ -1,0 +1,51 @@
+[
+  {
+    "stream_name": "NDI-CAM-01",
+    "source_type": "ColorBars",
+    "resolution": "1920x1080",
+    "fps": "30",
+    "pattern": "smptebars",
+    "audio_freq": 1000,
+    "overlay_text": "CAM 1 - COLOR BARS",
+    "discovery_mode": "Bonjour",
+    "tally_state": "Program",
+    "umd_text": "CAM 1",
+    "health_port": 8081,
+    "dest_port": 5004,
+    "worker_ip": "10.10.1.10"
+  },
+  {
+    "stream_name": "NDI-CAM-02",
+    "source_type": "WebPage",
+    "source_uri": "https://finance.yahoo.com",
+    "resolution": "1920x1080",
+    "fps": "30",
+    "audio_freq": 1000,
+    "overlay_text": "CAM 2 - FINANCIAL STATS",
+    "discovery_mode": "CentralServer",
+    "discovery_server_ip": "127.0.0.1",
+    "discovery_server_port": 5959,
+    "tally_state": "Preview",
+    "umd_text": "CAM 2",
+    "health_port": 8082,
+    "dest_port": 5005,
+    "worker_ip": "10.10.1.11"
+  },
+  {
+    "stream_name": "NDI-QUAD-MULTIVIEWER-01",
+    "source_type": "QuadSplit",
+    "source_uri": "smptebars, testsrc2, rgbtestsrc, mandelbrot",
+    "resolution": "1920x1080",
+    "fps": "30",
+    "audio_freq": 1000,
+    "overlay_text": "MULTIVIEWER - 2x2 GRID",
+    "discovery_mode": "CentralServer",
+    "discovery_server_ip": "127.0.0.1",
+    "discovery_server_port": 5959,
+    "tally_state": "Program",
+    "umd_text": "QUAD MV",
+    "health_port": 8089,
+    "dest_port": 5009,
+    "worker_ip": "10.10.1.12"
+  }
+]

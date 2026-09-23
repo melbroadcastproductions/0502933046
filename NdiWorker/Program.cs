@@ -1,0 +1,886 @@
+using System;
+using System.Diagnostics;
+using System.IO;
+using System.Net;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace NdiWorker
+{
+    class Program
+    {
+        private static readonly string StreamName = Environment.GetEnvironmentVariable("STREAM_NAME") ?? "NDI-Worker-01";
+        private static readonly string SourceType = Environment.GetEnvironmentVariable("SOURCE_TYPE") ?? "ColorBars"; // ColorBars, Picture, VideoClip, WebPage
+        private static readonly string SourceUri = Environment.GetEnvironmentVariable("SOURCE_URI") ?? "";
+        private static readonly string Resolution = Environment.GetEnvironmentVariable("RESOLUTION") ?? "1920x1080";
+        private static readonly string Fps = Environment.GetEnvironmentVariable("FPS") ?? "30";
+        private static readonly string Pattern = Environment.GetEnvironmentVariable("PATTERN") ?? "smptebars";
+        private static readonly string AudioFreq = Environment.GetEnvironmentVariable("AUDIO_FREQ") ?? "1000";
+        private static readonly string OverlayText = Environment.GetEnvironmentVariable("OVERLAY_TEXT") ?? "LIVE FINANCIAL NDI";
+        private static readonly string DestIp = Environment.GetEnvironmentVariable("DEST_IP") ?? "239.255.0.1";
+        private static readonly string DestPort = Environment.GetEnvironmentVariable("DEST_PORT") ?? "5004";
+        private static readonly string WebRtcUrl = Environment.GetEnvironmentVariable("WEBRTC_URL") ?? "";
+        private static readonly string WorkerIp = Environment.GetEnvironmentVariable("WORKER_IP") ?? "10.10.1.10";
+        private static readonly int HealthPort = int.TryParse(Environment.GetEnvironmentVariable("HEALTH_PORT"), out var p) ? p : 8080;
+
+        // NDI Discovery & Tally / UMD parameters
+        private static readonly string DiscoveryServerIp;
+        private static readonly string DiscoveryServerPort;
+        private static readonly string DiscoveryMode = GetInitialDiscoveryMode(out DiscoveryServerIp, out DiscoveryServerPort);
+
+        private static string GetInitialDiscoveryMode(out string serverIp, out string serverPort)
+        {
+            string? envMode = Environment.GetEnvironmentVariable("DISCOVERY_MODE");
+            string envIp = Environment.GetEnvironmentVariable("DISCOVERY_SERVER_IP") ?? "127.0.0.1";
+            string envPort = Environment.GetEnvironmentVariable("DISCOVERY_SERVER_PORT") ?? "5959";
+
+            serverIp = envIp;
+            serverPort = envPort;
+
+            if (!string.IsNullOrEmpty(envMode))
+            {
+                return envMode;
+            }
+
+            // Check if machine system ndi.ini exists and has a discovery server configured
+            string[] possibleIniPaths = OperatingSystem.IsWindows()
+                ? new[] {
+                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "NDI", "ndi.ini"),
+                    "ndi.ini"
+                  }
+                : new[] { "/etc/ndi/ndi.ini", "ndi.ini" };
+
+            foreach (var iniPath in possibleIniPaths)
+            {
+                try
+                {
+                    if (File.Exists(iniPath))
+                    {
+                        string[] lines = File.ReadAllLines(iniPath);
+                        foreach (var line in lines)
+                        {
+                            if (line.StartsWith("discovery=", StringComparison.OrdinalIgnoreCase))
+                            {
+                                string val = line.Substring("discovery=".Length).Trim();
+                                var parts = val.Split(':');
+                                if (parts.Length > 0 && !string.IsNullOrEmpty(parts[0]))
+                                {
+                                    serverIp = parts[0];
+                                    if (parts.Length > 1) serverPort = parts[1];
+                                    Console.WriteLine($"[NdiWorker] Detected system NDI Access Manager Discovery Server in '{iniPath}': {serverIp}:{serverPort}");
+                                    return "CentralServer";
+                                }
+                            }
+                        }
+                    }
+                }
+                catch { }
+            }
+
+            return "CentralServer";
+        }
+        private static string TallyState = Environment.GetEnvironmentVariable("TALLY_STATE") ?? "Off"; // Off, Program, Preview
+        private static readonly string UmdText = Environment.GetEnvironmentVariable("UMD_TEXT") ?? StreamName;
+
+        private static readonly DateTime StartTime = DateTime.UtcNow;
+        private static Process? _ffmpegProcess;
+
+        static async Task Main(string[] args)
+        {
+            string configFile = "workers.json";
+            for (int i = 0; i < args.Length; i++)
+            {
+                if ((args[i] == "--config" || args[i] == "-c") && i + 1 < args.Length)
+                {
+                    configFile = args[i + 1];
+                }
+            }
+
+            if (File.Exists(configFile))
+            {
+                Console.WriteLine($"[NdiWorker] Config file detected: '{configFile}'. Loading multi-worker array...");
+                try
+                {
+                    string json = File.ReadAllText(configFile);
+                    using var doc = JsonDocument.Parse(json);
+                    if (doc.RootElement.ValueKind == JsonValueKind.Array)
+                    {
+                        using var cts = new CancellationTokenSource();
+                        Console.CancelKeyPress += (s, e) => { e.Cancel = true; cts.Cancel(); };
+
+                        var workerTasks = new System.Collections.Generic.List<Task>();
+                        foreach (var elem in doc.RootElement.EnumerateArray())
+                        {
+                            var item = elem;
+                            workerTasks.Add(Task.Run(() => RunSingleWorkerFromConfig(item, cts.Token)));
+                        }
+
+                        await Task.WhenAll(workerTasks);
+                        return;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[NdiWorker] Config file parse error: {ex.Message}. Falling back to env configuration...");
+                }
+            }
+
+            Console.WriteLine("==================================================");
+            Console.WriteLine($" NDI C# Broadcast Worker with Discovery & Tally starting...");
+            Console.WriteLine($" Stream Name     : {StreamName}");
+            Console.WriteLine($" Source Type     : {SourceType}");
+            Console.WriteLine($" Source URI      : {(string.IsNullOrEmpty(SourceUri) ? "(N/A)" : SourceUri)}");
+            Console.WriteLine($" Discovery Mode  : {DiscoveryMode} {(DiscoveryMode == "CentralServer" ? $"({DiscoveryServerIp}:{DiscoveryServerPort})" : "")}");
+            Console.WriteLine($" Tally State     : {TallyState}");
+            Console.WriteLine($" UMD Text        : {UmdText}");
+            Console.WriteLine($" Resolution      : {Resolution} @ {Fps} fps");
+            Console.WriteLine($" Destination     : udp://{DestIp}:{DestPort}");
+            Console.WriteLine($" Health Port     : {HealthPort}");
+            Console.WriteLine("==================================================");
+
+            using var singleCts = new CancellationTokenSource();
+            Console.CancelKeyPress += (s, e) =>
+            {
+                Console.WriteLine("[NdiWorker] Shutdown requested.");
+                e.Cancel = true;
+                singleCts.Cancel();
+            };
+
+            // Start Health HTTP Listener
+            var healthTask = RunHealthServerAsync(HealthPort, singleCts.Token);
+
+            // Configure NDI Central Discovery / mDNS ini file BEFORE NDI SDK initialization
+            ConfigureNdiDiscovery();
+
+            // Initialize Native NDI Sender
+            bool ndiInitialized = false;
+            IntPtr pNdiSender = IntPtr.Zero;
+            try
+            {
+                ndiInitialized = NdiNative.NDIlib_initialize();
+                Console.WriteLine($"[NdiWorker] NDIlib_initialize() status: {ndiInitialized}");
+                if (ndiInitialized)
+                {
+                    IntPtr pName = Marshal.StringToCoTaskMemUTF8(StreamName);
+                    IntPtr pGroups = Marshal.StringToCoTaskMemUTF8(string.Empty);
+
+                    try
+                    {
+                        var sendSettings = new NdiNative.NDIlib_send_create_t
+                        {
+                            p_ndi_name = pName,
+                            p_groups = pGroups,
+                            clock_video = true,
+                            clock_audio = false
+                        };
+                        pNdiSender = NdiNative.NDIlib_send_create(ref sendSettings);
+                        if (pNdiSender != IntPtr.Zero)
+                        {
+                            Console.WriteLine($"[NdiWorker] SUCCESS: Native NDI Sender initialized: '{StreamName}' (Handle: {pNdiSender})");
+                        }
+                        else
+                        {
+                            Console.WriteLine($"[NdiWorker] WARNING: NDIlib_send_create returned null handle for '{StreamName}'");
+                        }
+                    }
+                    finally
+                    {
+                        if (pName != IntPtr.Zero) Marshal.FreeCoTaskMem(pName);
+                        if (pGroups != IntPtr.Zero) Marshal.FreeCoTaskMem(pGroups);
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("[NdiWorker] Native NDI SDK initialization returned false. Check that native NDI DLL is present and architecture matches.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[NdiWorker] Native NDI SDK initialization note: {ex.Message}");
+            }
+
+            // If FFmpeg is not present or if native NDI sender is active, run managed C# BGRA frame generator loop
+            bool ffmpegStarted = StartFfmpegPipeline(pNdiSender, singleCts.Token);
+
+            if (pNdiSender != IntPtr.Zero && !ffmpegStarted)
+            {
+                Console.WriteLine("[NdiWorker] FFmpeg process not detected. Launching Pure C# Managed BGRA NDI Frame Generator...");
+                _ = Task.Run(() => RunManagedFrameSendingLoop(pNdiSender, singleCts.Token), singleCts.Token);
+            }
+
+            try
+            {
+                await Task.Delay(-1, singleCts.Token);
+            }
+            catch (TaskCanceledException) { }
+
+            if (pNdiSender != IntPtr.Zero)
+            {
+                try { NdiNative.NDIlib_send_destroy(pNdiSender); } catch { }
+            }
+
+            StopFfmpegPipeline();
+            Console.WriteLine("[NdiWorker] Shutdown complete.");
+        }
+
+        private static async Task RunSingleWorkerFromConfig(JsonElement cfg, CancellationToken token)
+        {
+            string sName = cfg.TryGetProperty("stream_name", out var p1) ? p1.GetString() ?? StreamName : StreamName;
+            string sType = cfg.TryGetProperty("source_type", out var p2) ? p2.GetString() ?? SourceType : SourceType;
+            string sUri = cfg.TryGetProperty("source_uri", out var p3) ? p3.GetString() ?? "" : "";
+            int hPort = cfg.TryGetProperty("health_port", out var p4) && p4.TryGetInt32(out var hp) ? hp : HealthPort;
+            string wIp = cfg.TryGetProperty("worker_ip", out var p5) ? p5.GetString() ?? WorkerIp : WorkerIp;
+
+            Console.WriteLine($"[NdiWorker] Launching configured stream '{sName}' [{sType}] on health port {hPort}...");
+            var healthTask = RunHealthServerAsync(hPort, token);
+
+            try { await Task.Delay(-1, token); } catch { }
+        }
+
+        private static bool StartFfmpegPipeline(IntPtr pNdiSender, CancellationToken token)
+        {
+            string inputArgs = "";
+            string filterArgs = "";
+
+            string asource = AudioFreq != "0" && !string.IsNullOrEmpty(AudioFreq)
+                ? $"sine=frequency={AudioFreq}:sample_rate=48000"
+                : "anullsrc=r=48000:cl=stereo";
+
+            string tallyBoxColor = TallyState.ToLowerInvariant() switch
+            {
+                "program" => "red@0.8",
+                "preview" => "green@0.8",
+                _ => "black@0.6"
+            };
+
+            string fontOpt = OperatingSystem.IsWindows() && File.Exists(@"C:\Windows\Fonts\arial.ttf")
+                ? ":fontfile='C\\:/Windows/Fonts/arial.ttf'"
+                : "";
+
+            string sanitize(string s) => s.Replace(":", "\\:").Replace("'", "").Replace("\\", "\\\\");
+            string safeStreamName = sanitize(StreamName);
+            string safeUmdText = sanitize(UmdText);
+            string safeOverlayText = sanitize(OverlayText);
+
+            string vfilter = $"scale={Resolution.Replace('x', ':')},drawtext=text='STREAM\\: {safeStreamName} [{SourceType}] ({Resolution} @ {Fps}fps)'{fontOpt}:x=40:y=40:fontsize=36:fontcolor=white:box=1:boxcolor={tallyBoxColor},drawtext=text='TALLY\\: {TallyState.ToUpper()} | UMD\\: {safeUmdText} | {safeOverlayText}'{fontOpt}:x=40:y=90:fontsize=28:fontcolor=yellow:box=1:boxcolor={tallyBoxColor}";
+
+            switch (SourceType.ToLowerInvariant())
+            {
+                case "picture":
+                    if (!string.IsNullOrEmpty(SourceUri))
+                    {
+                        inputArgs = $"-loop 1 -i \"{SourceUri}\" -f lavfi -i \"{asource}\"";
+                    }
+                    else
+                    {
+                        inputArgs = $"-f lavfi -i \"testsrc2=size={Resolution}:rate={Fps}\" -f lavfi -i \"{asource}\"";
+                    }
+                    filterArgs = $"-vf \"{vfilter}\"";
+                    break;
+
+                case "videoclip":
+                    if (!string.IsNullOrEmpty(SourceUri))
+                    {
+                        inputArgs = $"-stream_loop -1 -i \"{SourceUri}\"";
+                        filterArgs = $"-vf \"{vfilter}\"";
+                    }
+                    else
+                    {
+                        inputArgs = $"-f lavfi -i \"testsrc=size={Resolution}:rate={Fps}\" -f lavfi -i \"{asource}\"";
+                        filterArgs = $"-vf \"{vfilter}\"";
+                    }
+                    break;
+
+                case "webpage":
+                    if (!string.IsNullOrEmpty(SourceUri))
+                    {
+                        string safeUri = SourceUri.Replace(":", "\\:");
+                        inputArgs = $"-f lavfi -i \"mandelbrot=size={Resolution}:rate={Fps}\" -f lavfi -i \"{asource}\"";
+                        string webOverlay = $"drawtext=text='LIVE WEB PAGE\\: {safeUri}':x=40:y=140:fontsize=24:fontcolor=cyan:box=1:boxcolor={tallyBoxColor}";
+                        filterArgs = $"-vf \"{vfilter},{webOverlay}\"";
+                    }
+                    else
+                    {
+                        inputArgs = $"-f lavfi -i \"rgbtestsrc=size={Resolution}:rate={Fps}\" -f lavfi -i \"{asource}\"";
+                        filterArgs = $"-vf \"{vfilter}\"";
+                    }
+                    break;
+
+                case "quadsplit":
+                    var subResolutions = Resolution.Split('x');
+                    int subW = int.TryParse(subResolutions[0], out var wVal) ? wVal / 2 : 960;
+                    int subH = subResolutions.Length > 1 && int.TryParse(subResolutions[1], out var hVal) ? hVal / 2 : 540;
+
+                    string[] quadSources = !string.IsNullOrWhiteSpace(SourceUri) ? SourceUri.Split(',') : Array.Empty<string>();
+                    var sbInputs = new StringBuilder();
+                    var sbFilter = new StringBuilder("-filter_complex \"");
+
+                    string[] fallbackPatterns = new[] { "smptebars", "testsrc2", "rgbtestsrc", "mandelbrot" };
+
+                    for (int i = 0; i < 4; i++)
+                    {
+                        if (i < quadSources.Length && !string.IsNullOrWhiteSpace(quadSources[i]))
+                        {
+                            sbInputs.Append($"-i \"{quadSources[i].Trim()}\" ");
+                        }
+                        else
+                        {
+                            sbInputs.Append($"-f lavfi -i \"{fallbackPatterns[i]}=size={subW}x{subH}:rate={Fps}\" ");
+                        }
+                        sbFilter.Append($"[{i}:v]scale={subW}:{subH}[v{i}]; ");
+                    }
+
+                    sbInputs.Append($"-f lavfi -i \"{asource}\"");
+                    sbFilter.Append($"[v0][v1][v2][v3]xstack=inputs=4:layout=0_0|w0_0|0_h0|w0_h0[quad]; [quad]{vfilter}[out]\" -map \"[out]\" -map 4:a");
+
+                    inputArgs = sbInputs.ToString();
+                    filterArgs = sbFilter.ToString();
+                    break;
+
+                case "colorbars":
+                default:
+                    string vsource = Pattern switch
+                    {
+                        "mandelbrot" => $"mandelbrot=size={Resolution}:rate={Fps}",
+                        "testsrc" => $"testsrc=size={Resolution}:rate={Fps}",
+                        "testsrc2" => $"testsrc2=size={Resolution}:rate={Fps}",
+                        "rgbtestsrc" => $"rgbtestsrc=size={Resolution}:rate={Fps}",
+                        "ball" => $"cellauto=size={Resolution}:rate={Fps}",
+                        _ => $"smptebars=size={Resolution}:rate={Fps}"
+                    };
+                    inputArgs = $"-f lavfi -i \"{vsource}\" -f lavfi -i \"{asource}\"";
+                    filterArgs = $"-vf \"{vfilter}\"";
+                    break;
+            }
+
+            bool useNativeNdi = pNdiSender != IntPtr.Zero;
+
+            string rtpOutput = !string.IsNullOrEmpty(WebRtcUrl)
+                ? $" -c:v libx264 -preset ultrafast -tune zerolatency -an -f rtp \"{WebRtcUrl}\""
+                : "";
+
+            string arguments = useNativeNdi
+                ? $"-re {inputArgs} {filterArgs} -an -pix_fmt bgra -f rawvideo pipe:1{rtpOutput}"
+                : $"-re {inputArgs} {filterArgs} -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -g {Fps} -c:a aac -b:a 128k -f mpegts \"udp://{DestIp}:{DestPort}?pkt_size=1316&ttl=1\"{rtpOutput}";
+
+            Console.WriteLine($"[NdiWorker] Launching FFmpeg pipeline (Native NDI Mode: {useNativeNdi}): ffmpeg {arguments}");
+
+            var psi = new ProcessStartInfo
+            {
+                FileName = "ffmpeg",
+                Arguments = arguments,
+                RedirectStandardOutput = useNativeNdi,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            try
+            {
+                _ffmpegProcess = Process.Start(psi);
+                if (_ffmpegProcess != null)
+                {
+                    _ffmpegProcess.ErrorDataReceived += (s, e) =>
+                    {
+                        if (!string.IsNullOrEmpty(e.Data) && (e.Data.Contains("frame=") || e.Data.Contains("fps=")))
+                        {
+                            Console.WriteLine($"[FFmpeg] {e.Data.Trim()}");
+                        }
+                    };
+                    _ffmpegProcess.BeginErrorReadLine();
+
+                    if (useNativeNdi)
+                    {
+                        Task.Run(() => RunNdiFrameSendingLoop(pNdiSender, _ffmpegProcess.StandardOutput.BaseStream, token), token);
+                    }
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[NdiWorker] FFmpeg not found or failed to start ({ex.Message}). Falling back to Pure C# Frame Generator.");
+            }
+            return false;
+        }
+
+        private static void RunManagedFrameSendingLoop(IntPtr pNdiSender, CancellationToken token)
+        {
+            var resParts = Resolution.Split('x');
+            int xres = int.TryParse(resParts[0], out var w) ? w : 1920;
+            int yres = resParts.Length > 1 && int.TryParse(resParts[1], out var h) ? h : 1080;
+            int fpsVal = int.TryParse(Fps, out var f) ? f : 30;
+            int frameIntervalMs = 1000 / Math.Max(1, fpsVal);
+            int strideBytes = xres * 4;
+            int frameSizeBytes = strideBytes * yres;
+
+            byte[] buffer = new byte[frameSizeBytes];
+            long frameIndex = 0;
+
+            Console.WriteLine($"[NdiWorker] Pure C# Managed Frame Loop active ({xres}x{yres} BGRA @ {fpsVal}fps)");
+
+            while (!token.IsCancellationRequested)
+            {
+                var frameStart = DateTime.UtcNow;
+                frameIndex++;
+
+                GeneratePureBgraFrame(buffer, xres, yres, frameIndex, StreamName, TallyState, UmdText);
+
+                unsafe
+                {
+                    fixed (byte* pData = buffer)
+                    {
+                        var videoFrame = new NdiNative.NDIlib_video_frame_v2_t
+                        {
+                            xres = xres,
+                            yres = yres,
+                            FourCC = NdiNative.NDIlib_FourCC_video_type_e.NDIlib_FourCC_video_type_BGRX,
+                            frame_rate_N = fpsVal,
+                            frame_rate_D = 1,
+                            picture_aspect_ratio = (float)xres / yres,
+                            frame_format_type = NdiNative.NDIlib_frame_format_type_e.NDIlib_frame_format_type_progressive,
+                            timecode = long.MaxValue, // NDIlib_send_timecode_synthesize (0x7fffffffffffffffLL)
+                            p_data = (IntPtr)pData,
+                            line_stride_in_bytes = strideBytes,
+                            p_metadata = IntPtr.Zero,
+                            timestamp = 0
+                        };
+
+                        NdiNative.NDIlib_send_send_video_v2(pNdiSender, ref videoFrame);
+                    }
+                }
+
+                if (frameIndex % 300 == 0)
+                {
+                    Console.WriteLine($"[NdiWorker] [Active Broadcast] Dispatched {frameIndex} NDI video frames for '{StreamName}'");
+                }
+
+                int elapsedMs = (int)(DateTime.UtcNow - frameStart).TotalMilliseconds;
+                int sleepMs = Math.Max(1, frameIntervalMs - elapsedMs);
+                Thread.Sleep(sleepMs);
+            }
+        }
+
+        private static void GeneratePureBgraFrame(byte[] buffer, int width, int height, long frameNum, string name, string tally, string umd)
+        {
+            byte tallyR = tally.Equals("Program", StringComparison.OrdinalIgnoreCase) ? (byte)255 : (byte)0;
+            byte tallyG = tally.Equals("Preview", StringComparison.OrdinalIgnoreCase) ? (byte)255 : (byte)0;
+            byte tallyB = 0;
+
+            byte animOffset = (byte)((frameNum * 4) % 256);
+
+            string currentSourceMode = SourceType.ToLowerInvariant();
+
+            for (int y = 0; y < height; y++)
+            {
+                bool isTopBar = y < 90;
+                bool isBottomBar = y > height - 70;
+
+                for (int x = 0; x < width; x++)
+                {
+                    int offset = (y * width + x) * 4;
+
+                    if (isTopBar)
+                    {
+                        buffer[offset + 0] = tallyB;
+                        buffer[offset + 1] = tallyG;
+                        buffer[offset + 2] = tallyR;
+                        buffer[offset + 3] = 255;
+                    }
+                    else if (isBottomBar)
+                    {
+                        buffer[offset + 0] = 30;
+                        buffer[offset + 1] = 30;
+                        buffer[offset + 2] = 30;
+                        buffer[offset + 3] = 255;
+                    }
+                    else if (currentSourceMode == "webpage")
+                    {
+                        // Dedicated Live Web Page Browser UI Frame Generator
+                        bool isAddressBar = y >= 90 && y < 140;
+                        bool isChartArea = y >= 140 && y < height - 160;
+                        bool isTickerArea = y >= height - 160 && y <= height - 70;
+
+                        if (isAddressBar)
+                        {
+                            // Browser Header / Address Bar
+                            bool inUrlBox = x > 180 && x < width - 180 && y >= 100 && y <= 130;
+                            if (inUrlBox)
+                            {
+                                buffer[offset + 0] = 240; buffer[offset + 1] = 240; buffer[offset + 2] = 240; buffer[offset + 3] = 255;
+                            }
+                            else
+                            {
+                                buffer[offset + 0] = 45; buffer[offset + 1] = 45; buffer[offset + 2] = 45; buffer[offset + 3] = 255;
+                            }
+                        }
+                        else if (isChartArea)
+                        {
+                            // Dark background for Financial Web App
+                            byte bg = 18;
+                            byte r = bg, g = bg, b = bg;
+
+                            // Gridlines
+                            if (x % 120 == 0 || y % 80 == 0) { r = 35; g = 45; b = 60; }
+
+                            // Live animated Stock Price Line Chart
+                            int chartCenterY = 320;
+                            int waveY = chartCenterY + (int)(Math.Sin((x + frameNum * 6) * 0.015) * 80.0) + (int)(Math.Cos(x * 0.04) * 25.0);
+                            if (Math.Abs(y - waveY) < 3)
+                            {
+                                r = 0; g = 220; b = 120; // Glowing Green Financial Line Chart
+                            }
+                            else if (y > waveY && y < waveY + 80)
+                            {
+                                // Subtle fill under line
+                                r = 10; g = 60; b = 35;
+                            }
+
+                            buffer[offset + 0] = b; buffer[offset + 1] = g; buffer[offset + 2] = r; buffer[offset + 3] = 255;
+                        }
+                        else
+                        {
+                            // Bottom Financial Ticker Cards
+                            int cardIndex = (x * 4) / width;
+                            byte bgVal = (byte)(25 + cardIndex * 8);
+                            byte r = bgVal, g = bgVal, b = (byte)(bgVal + 15);
+
+                            int animatedBarHeight = (int)(Math.Abs(Math.Sin((cardIndex + 1) * 0.8 + frameNum * 0.1)) * 40.0);
+                            if (y > (height - 110 - animatedBarHeight) && y < height - 75)
+                            {
+                                r = 40; g = 180; b = 255; // Cyan Volume Bars
+                            }
+
+                            buffer[offset + 0] = b; buffer[offset + 1] = g; buffer[offset + 2] = r; buffer[offset + 3] = 255;
+                        }
+                    }
+                    else if (currentSourceMode == "quadsplit")
+                    {
+                        // Dedicated 2x2 Quad Split Screen Frame Generator
+                        int midX = width / 2;
+                        int midY = (height - 160) / 2 + 90;
+
+                        bool isBorder = Math.Abs(x - midX) < 4 || Math.Abs(y - midY) < 4;
+
+                        if (isBorder)
+                        {
+                            buffer[offset + 0] = 0; buffer[offset + 1] = 255; buffer[offset + 2] = 255; buffer[offset + 3] = 255; // Yellow Grid Borders
+                        }
+                        else
+                        {
+                            bool isQuad1 = x < midX && y < midY; // Quad 1: Top-Left (Camera / Color Bars)
+                            bool isQuad2 = x >= midX && y < midY; // Quad 2: Top-Right (Web Chart)
+                            bool isQuad3 = x < midX && y >= midY; // Quad 3: Bottom-Left (Market Depth)
+                            bool isQuad4 = x >= midX && y >= midY; // Quad 4: Bottom-Right (News / Ticker)
+
+                            byte r = 0, g = 0, b = 0;
+
+                            if (isQuad1)
+                            {
+                                int bar = (x * 7) / midX;
+                                switch (bar)
+                                {
+                                    case 0: r = 180; g = 180; b = 180; break;
+                                    case 1: r = 180; g = 180; b = 0; break;
+                                    case 2: r = 0; g = 180; b = 180; break;
+                                    case 3: r = 0; g = 180; b = 0; break;
+                                    case 4: r = 180; g = 0; b = 180; break;
+                                    case 5: r = 180; g = 0; b = 0; break;
+                                    default: r = 0; g = 0; b = 180; break;
+                                }
+                            }
+                            else if (isQuad2)
+                            {
+                                // Quad 2: Simulated Web Page
+                                r = 15; g = 25; b = 40;
+                                int waveY = midY / 2 + (int)(Math.Sin((x + frameNum * 8) * 0.02) * 40.0);
+                                if (Math.Abs(y - waveY) < 3) { r = 0; g = 255; b = 100; }
+                            }
+                            else if (isQuad3)
+                            {
+                                // Quad 3: Market Order Book Depth
+                                r = 20; g = 15; b = 25;
+                                int depthWidth = (int)((y - midY) * 1.5 + (frameNum % 50));
+                                if ((x - (midX / 2)) < depthWidth && (x - (midX / 2)) > 0) { r = 220; g = 40; b = 60; }
+                            }
+                            else
+                            {
+                                // Quad 4: News Feed Radar & Ticker
+                                r = 10; g = 30; b = 20;
+                                if ((x + y + frameNum * 4) % 40 < 4) { r = 0; g = 200; b = 255; }
+                            }
+
+                            buffer[offset + 0] = b; buffer[offset + 1] = g; buffer[offset + 2] = r; buffer[offset + 3] = 255;
+                        }
+                    }
+                    else
+                    {
+                        // SMPTE-style vertical color bars
+                        int barIndex = (x * 7) / width;
+                        byte r = 0, g = 0, b = 0;
+                        switch (barIndex)
+                        {
+                            case 0: r = 200; g = 200; b = 200; break; // White
+                            case 1: r = 200; g = 200; b = 0; break;   // Yellow
+                            case 2: r = 0; g = 200; b = 200; break;   // Cyan
+                            case 3: r = 0; g = 200; b = 0; break;     // Green
+                            case 4: r = 200; g = 0; b = 200; break;   // Magenta
+                            case 5: r = 200; g = 0; b = 0; break;     // Red
+                            case 6: r = 0; g = 0; b = 200; break;     // Blue
+                        }
+
+                        // Add subtle animated scanline
+                        if ((y + frameNum * 2) % 60 < 4)
+                        {
+                            r = animOffset;
+                        }
+
+                        buffer[offset + 0] = b;
+                        buffer[offset + 1] = g;
+                        buffer[offset + 2] = r;
+                        buffer[offset + 3] = 255;
+                    }
+                }
+            }
+        }
+
+        private static void RunNdiFrameSendingLoop(IntPtr pNdiSender, Stream rawStream, CancellationToken token)
+        {
+            var resParts = Resolution.Split('x');
+            int xres = int.TryParse(resParts[0], out var w) ? w : 1920;
+            int yres = resParts.Length > 1 && int.TryParse(resParts[1], out var h) ? h : 1080;
+            int frameRateNumerator = int.TryParse(Fps, out var f) ? f : 30;
+            int frameRateDenominator = 1;
+            int strideBytes = xres * 4;
+            int frameSizeBytes = strideBytes * yres;
+
+            byte[] buffer = new byte[frameSizeBytes];
+
+            Console.WriteLine($"[NdiWorker] NDI Frame Sending Loop started ({xres}x{yres} BGRA @ {frameRateNumerator}fps, frame size: {frameSizeBytes} bytes)");
+
+            while (!token.IsCancellationRequested)
+            {
+                int bytesRead = 0;
+                while (bytesRead < frameSizeBytes && !token.IsCancellationRequested)
+                {
+                    int n = rawStream.Read(buffer, bytesRead, frameSizeBytes - bytesRead);
+                    if (n <= 0) break;
+                    bytesRead += n;
+                }
+
+                if (bytesRead < frameSizeBytes)
+                {
+                    Console.WriteLine("[NdiWorker] FFmpeg stream ended. Transitioning seamlessly to Pure C# Managed Frame Generator...");
+                    RunManagedFrameSendingLoop(pNdiSender, token);
+                    break;
+                }
+
+                unsafe
+                {
+                    fixed (byte* pData = buffer)
+                    {
+                        var videoFrame = new NdiNative.NDIlib_video_frame_v2_t
+                        {
+                            xres = xres,
+                            yres = yres,
+                            FourCC = NdiNative.NDIlib_FourCC_video_type_e.NDIlib_FourCC_video_type_BGRX,
+                            frame_rate_N = frameRateNumerator,
+                            frame_rate_D = frameRateDenominator,
+                            picture_aspect_ratio = (float)xres / yres,
+                            frame_format_type = NdiNative.NDIlib_frame_format_type_e.NDIlib_frame_format_type_progressive,
+                            timecode = long.MaxValue, // NDIlib_send_timecode_synthesize (0x7fffffffffffffffLL)
+                            p_data = (IntPtr)pData,
+                            line_stride_in_bytes = strideBytes,
+                            p_metadata = IntPtr.Zero,
+                            timestamp = 0
+                        };
+
+                        NdiNative.NDIlib_send_send_video_v2(pNdiSender, ref videoFrame);
+                    }
+                }
+            }
+        }
+
+        private static void ConfigureNdiDiscovery()
+        {
+            if (DiscoveryMode.Equals("CentralServer", StringComparison.OrdinalIgnoreCase))
+            {
+                string iniContent = $"[Network]\ndiscovery={DiscoveryServerIp}:{DiscoveryServerPort}\nnic_ip={WorkerIp}\nip_address={WorkerIp}\n";
+                Console.WriteLine($"[NdiWorker] Configuring NDI Discovery Central Server: {DiscoveryServerIp}:{DiscoveryServerPort} for Worker IP: {WorkerIp}");
+
+                if (OperatingSystem.IsWindows())
+                {
+                    try
+                    {
+                        string progData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
+                        string ndiDir = Path.Combine(progData, "NDI");
+                        Directory.CreateDirectory(ndiDir);
+                        string targetFile = Path.Combine(ndiDir, "ndi.ini");
+                        File.WriteAllText(targetFile, iniContent);
+                        Console.WriteLine($"[NdiWorker] NDI Access Manager standard ini written to: {targetFile}");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[NdiWorker] Could not write Windows NDI ini file: {ex.Message}");
+                    }
+                }
+                else
+                {
+                    try
+                    {
+                        Directory.CreateDirectory("/etc/ndi");
+                        File.WriteAllText("/etc/ndi/ndi.ini", iniContent);
+                        Console.WriteLine("[NdiWorker] Standard Linux NDI ini written to /etc/ndi/ndi.ini");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[NdiWorker] Could not write Linux NDI ini file: {ex.Message}");
+                    }
+                }
+
+                try
+                {
+                    File.WriteAllText("ndi.ini", iniContent);
+                }
+                catch { }
+            }
+            else
+            {
+                Console.WriteLine("[NdiWorker] NDI Discovery configured for mDNS/Bonjour multicast.");
+            }
+        }
+
+        private static void StopFfmpegPipeline()
+        {
+            if (_ffmpegProcess != null && !_ffmpegProcess.HasExited)
+            {
+                try
+                {
+                    _ffmpegProcess.Kill();
+                }
+                catch { }
+            }
+        }
+
+        private static async Task RunHealthServerAsync(int port, CancellationToken token)
+        {
+            HttpListener listener = new HttpListener();
+            bool started = false;
+
+            try
+            {
+                listener.Prefixes.Add($"http://*:{port}/");
+                listener.Start();
+                started = true;
+                Console.WriteLine($"[NdiWorker] Health HTTP listener listening on wildcard port {port}");
+            }
+            catch (HttpListenerException)
+            {
+                try
+                {
+                    try { listener.Close(); } catch { }
+                    listener = new HttpListener();
+                    listener.Prefixes.Add($"http://localhost:{port}/");
+                    listener.Start();
+                    started = true;
+                    Console.WriteLine($"[NdiWorker] Health HTTP listener bound to localhost port {port} (non-admin fallback)");
+                }
+                catch (Exception ex2)
+                {
+                    Console.WriteLine($"[NdiWorker] Health server fallback error: {ex2.Message}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[NdiWorker] Health server exception: {ex.Message}");
+            }
+
+            if (!started) return;
+
+            try
+            {
+                while (!token.IsCancellationRequested)
+                {
+                    var contextTask = listener.GetContextAsync();
+                    var completedTask = await Task.WhenAny(contextTask, Task.Delay(-1, token));
+
+                    if (completedTask == contextTask)
+                    {
+                        var context = await contextTask;
+                        ProcessHealthRequest(context);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[NdiWorker] Health server listener exception: {ex.Message}");
+            }
+        }
+
+        private static void ProcessHealthRequest(HttpListenerContext context)
+        {
+            try
+            {
+                var req = context.Request;
+                var resp = context.Response;
+
+                if (req.Url?.AbsolutePath == "/tally" && req.HttpMethod == "POST")
+                {
+                    using var reader = new StreamReader(req.InputStream);
+                    string body = reader.ReadToEnd();
+                    if (body.Contains("Program")) TallyState = "Program";
+                    else if (body.Contains("Preview")) TallyState = "Preview";
+                    else if (body.Contains("Off")) TallyState = "Off";
+
+                    resp.StatusCode = 200;
+                    byte[] buf = Encoding.UTF8.GetBytes($"{{\"status\":\"ok\",\"tally_state\":\"{TallyState}\"}}");
+                    resp.OutputStream.Write(buf, 0, buf.Length);
+                    resp.OutputStream.Close();
+                    return;
+                }
+
+                if (req.Url?.AbsolutePath == "/" || req.Url?.AbsolutePath == "/health" || req.Url?.AbsolutePath == "/status")
+                {
+                    bool isAlive = _ffmpegProcess != null && !_ffmpegProcess.HasExited;
+                    var currentProc = Process.GetCurrentProcess();
+
+                    var healthObj = new
+                    {
+                        status = "healthy",
+                        stream_name = StreamName,
+                        source_type = SourceType,
+                        source_uri = SourceUri,
+                        resolution = Resolution,
+                        fps = Fps,
+                        pattern = Pattern,
+                        discovery_mode = DiscoveryMode,
+                        discovery_server = DiscoveryMode == "CentralServer" ? $"{DiscoveryServerIp}:{DiscoveryServerPort}" : "mDNS/Bonjour",
+                        tally_state = TallyState,
+                        umd_text = UmdText,
+                        audio_freq_hz = AudioFreq,
+                        destination = $"udp://{DestIp}:{DestPort}",
+                        uptime_seconds = Math.Round((DateTime.UtcNow - StartTime).TotalSeconds, 2),
+                        memory_mb = Math.Round((double)currentProc.WorkingSet64 / (1024 * 1024), 2),
+                        ffmpeg_running = isAlive
+                    };
+
+                    string json = JsonSerializer.Serialize(healthObj, new JsonSerializerOptions { WriteIndented = true });
+                    byte[] buf = Encoding.UTF8.GetBytes(json);
+
+                    resp.ContentType = "application/json";
+                    resp.StatusCode = 200;
+                    resp.ContentLength64 = buf.Length;
+                    resp.OutputStream.Write(buf, 0, buf.Length);
+                }
+                else
+                {
+                    resp.StatusCode = 404;
+                }
+                resp.OutputStream.Close();
+            }
+            catch { }
+        }
+    }
+}
