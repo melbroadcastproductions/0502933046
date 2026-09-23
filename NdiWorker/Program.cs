@@ -427,12 +427,12 @@ namespace NdiWorker
                         {
                             xres = xres,
                             yres = yres,
-                            FourCC = NdiNative.NDIlib_FourCC_video_type_e.NDIlib_FourCC_video_type_BGRA,
+                            FourCC = NdiNative.NDIlib_FourCC_video_type_e.NDIlib_FourCC_video_type_BGRX,
                             frame_rate_N = fpsVal,
                             frame_rate_D = 1,
                             picture_aspect_ratio = (float)xres / yres,
                             frame_format_type = NdiNative.NDIlib_frame_format_type_e.NDIlib_frame_format_type_progressive,
-                            timecode = 2147483647L, // NDIlib_send_timecode_synthesize
+                            timecode = long.MaxValue, // NDIlib_send_timecode_synthesize (0x7fffffffffffffffLL)
                             p_data = (IntPtr)pData,
                             line_stride_in_bytes = strideBytes,
                             p_metadata = IntPtr.Zero,
@@ -555,12 +555,12 @@ namespace NdiWorker
                         {
                             xres = xres,
                             yres = yres,
-                            FourCC = NdiNative.NDIlib_FourCC_video_type_e.NDIlib_FourCC_video_type_BGRA,
+                            FourCC = NdiNative.NDIlib_FourCC_video_type_e.NDIlib_FourCC_video_type_BGRX,
                             frame_rate_N = frameRateNumerator,
                             frame_rate_D = frameRateDenominator,
                             picture_aspect_ratio = (float)xres / yres,
                             frame_format_type = NdiNative.NDIlib_frame_format_type_e.NDIlib_frame_format_type_progressive,
-                            timecode = 2147483647L, // NDIlib_send_timecode_synthesize
+                            timecode = long.MaxValue, // NDIlib_send_timecode_synthesize (0x7fffffffffffffffLL)
                             p_data = (IntPtr)pData,
                             line_stride_in_bytes = strideBytes,
                             p_metadata = IntPtr.Zero,
