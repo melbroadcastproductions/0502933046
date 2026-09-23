@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -163,21 +164,32 @@ namespace NdiWorker
                 Console.WriteLine($"[NdiWorker] NDIlib_initialize() status: {ndiInitialized}");
                 if (ndiInitialized)
                 {
-                    var sendSettings = new NdiNative.NDIlib_send_create_t
+                    IntPtr pName = Marshal.StringToCoTaskMemUTF8(StreamName);
+                    IntPtr pGroups = Marshal.StringToCoTaskMemUTF8(string.Empty);
+
+                    try
                     {
-                        p_ndi_name = StreamName,
-                        p_groups = string.Empty,
-                        clock_video = true,
-                        clock_audio = false
-                    };
-                    pNdiSender = NdiNative.NDIlib_send_create(ref sendSettings);
-                    if (pNdiSender != IntPtr.Zero)
-                    {
-                        Console.WriteLine($"[NdiWorker] Native NDI Sender successfully initialized: '{StreamName}' (Handle: {pNdiSender})");
+                        var sendSettings = new NdiNative.NDIlib_send_create_t
+                        {
+                            p_ndi_name = pName,
+                            p_groups = pGroups,
+                            clock_video = true,
+                            clock_audio = false
+                        };
+                        pNdiSender = NdiNative.NDIlib_send_create(ref sendSettings);
+                        if (pNdiSender != IntPtr.Zero)
+                        {
+                            Console.WriteLine($"[NdiWorker] SUCCESS: Native NDI Sender initialized: '{StreamName}' (Handle: {pNdiSender})");
+                        }
+                        else
+                        {
+                            Console.WriteLine($"[NdiWorker] WARNING: NDIlib_send_create returned null handle for '{StreamName}'");
+                        }
                     }
-                    else
+                    finally
                     {
-                        Console.WriteLine($"[NdiWorker] NDIlib_send_create failed to create sender handle for '{StreamName}'");
+                        if (pName != IntPtr.Zero) Marshal.FreeCoTaskMem(pName);
+                        if (pGroups != IntPtr.Zero) Marshal.FreeCoTaskMem(pGroups);
                     }
                 }
                 else
@@ -420,7 +432,7 @@ namespace NdiWorker
                             frame_rate_D = 1,
                             picture_aspect_ratio = (float)xres / yres,
                             frame_format_type = NdiNative.NDIlib_frame_format_type_e.NDIlib_frame_format_type_progressive,
-                            timecode = 9223372036854775807L,
+                            timecode = 2147483647L, // NDIlib_send_timecode_synthesize
                             p_data = (IntPtr)pData,
                             line_stride_in_bytes = strideBytes,
                             p_metadata = IntPtr.Zero,
@@ -429,6 +441,11 @@ namespace NdiWorker
 
                         NdiNative.NDIlib_send_send_video_v2(pNdiSender, ref videoFrame);
                     }
+                }
+
+                if (frameIndex % 300 == 0)
+                {
+                    Console.WriteLine($"[NdiWorker] [Active Broadcast] Dispatched {frameIndex} NDI video frames for '{StreamName}'");
                 }
 
                 int elapsedMs = (int)(DateTime.UtcNow - frameStart).TotalMilliseconds;
@@ -542,7 +559,7 @@ namespace NdiWorker
                             frame_rate_D = frameRateDenominator,
                             picture_aspect_ratio = (float)xres / yres,
                             frame_format_type = NdiNative.NDIlib_frame_format_type_e.NDIlib_frame_format_type_progressive,
-                            timecode = 9223372036854775807L, // NDIlib_send_timecode_synthesize (int64_max)
+                            timecode = 2147483647L, // NDIlib_send_timecode_synthesize
                             p_data = (IntPtr)pData,
                             line_stride_in_bytes = strideBytes,
                             p_metadata = IntPtr.Zero,

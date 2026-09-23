@@ -74,10 +74,8 @@ namespace NdiWorker
         [StructLayout(LayoutKind.Sequential)]
         public struct NDIlib_send_create_t
         {
-            [MarshalAs(UnmanagedType.LPUTF8Str)]
-            public string p_ndi_name;
-            [MarshalAs(UnmanagedType.LPUTF8Str)]
-            public string p_groups;
+            public IntPtr p_ndi_name;
+            public IntPtr p_groups;
             [MarshalAs(UnmanagedType.U1)]
             public bool clock_video;
             [MarshalAs(UnmanagedType.U1)]
