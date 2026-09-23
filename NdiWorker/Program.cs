@@ -542,7 +542,8 @@ namespace NdiWorker
 
                 if (bytesRead < frameSizeBytes)
                 {
-                    Console.WriteLine("[NdiWorker] Stream ended or read incomplete frame, exiting NDI loop.");
+                    Console.WriteLine("[NdiWorker] FFmpeg stream ended. Transitioning seamlessly to Pure C# Managed Frame Generator...");
+                    RunManagedFrameSendingLoop(pNdiSender, token);
                     break;
                 }
 
