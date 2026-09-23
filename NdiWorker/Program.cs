@@ -26,9 +26,61 @@ namespace NdiWorker
         private static readonly int HealthPort = int.TryParse(Environment.GetEnvironmentVariable("HEALTH_PORT"), out var p) ? p : 8080;
 
         // NDI Discovery & Tally / UMD parameters
-        private static readonly string DiscoveryMode = Environment.GetEnvironmentVariable("DISCOVERY_MODE") ?? "Bonjour"; // Bonjour or CentralServer
-        private static readonly string DiscoveryServerIp = Environment.GetEnvironmentVariable("DISCOVERY_SERVER_IP") ?? "127.0.0.1";
-        private static readonly string DiscoveryServerPort = Environment.GetEnvironmentVariable("DISCOVERY_SERVER_PORT") ?? "5959";
+        private static readonly string DiscoveryServerIp;
+        private static readonly string DiscoveryServerPort;
+        private static readonly string DiscoveryMode = GetInitialDiscoveryMode(out DiscoveryServerIp, out DiscoveryServerPort);
+
+        private static string GetInitialDiscoveryMode(out string serverIp, out string serverPort)
+        {
+            string? envMode = Environment.GetEnvironmentVariable("DISCOVERY_MODE");
+            string envIp = Environment.GetEnvironmentVariable("DISCOVERY_SERVER_IP") ?? "127.0.0.1";
+            string envPort = Environment.GetEnvironmentVariable("DISCOVERY_SERVER_PORT") ?? "5959";
+
+            serverIp = envIp;
+            serverPort = envPort;
+
+            if (!string.IsNullOrEmpty(envMode))
+            {
+                return envMode;
+            }
+
+            // Check if machine system ndi.ini exists and has a discovery server configured
+            string[] possibleIniPaths = OperatingSystem.IsWindows()
+                ? new[] {
+                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "NDI", "ndi.ini"),
+                    "ndi.ini"
+                  }
+                : new[] { "/etc/ndi/ndi.ini", "ndi.ini" };
+
+            foreach (var iniPath in possibleIniPaths)
+            {
+                try
+                {
+                    if (File.Exists(iniPath))
+                    {
+                        string[] lines = File.ReadAllLines(iniPath);
+                        foreach (var line in lines)
+                        {
+                            if (line.StartsWith("discovery=", StringComparison.OrdinalIgnoreCase))
+                            {
+                                string val = line.Substring("discovery=".Length).Trim();
+                                var parts = val.Split(':');
+                                if (parts.Length > 0 && !string.IsNullOrEmpty(parts[0]))
+                                {
+                                    serverIp = parts[0];
+                                    if (parts.Length > 1) serverPort = parts[1];
+                                    Console.WriteLine($"[NdiWorker] Detected system NDI Access Manager Discovery Server in '{iniPath}': {serverIp}:{serverPort}");
+                                    return "CentralServer";
+                                }
+                            }
+                        }
+                    }
+                }
+                catch { }
+            }
+
+            return "CentralServer";
+        }
         private static string TallyState = Environment.GetEnvironmentVariable("TALLY_STATE") ?? "Off"; // Off, Program, Preview
         private static readonly string UmdText = Environment.GetEnvironmentVariable("UMD_TEXT") ?? StreamName;
 
