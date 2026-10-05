@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="NdiManager.Tests/NdiManager.Tests.csproj" />
+  <Project Path="NdiManager/NdiManager.csproj" />
+  <Project Path="NdiWorker/NdiWorker.csproj" />
+</Solution>
